@@ -30,10 +30,11 @@ viddef_t	vid;				// global video state
 #define	BASEHEIGHT	240
 
 #ifdef M20
-// M20: the span engine writes these in SDRAM, and the CPU drops them from
-// its cache after (port/span_engine.c): they must share no cache line with
-// anything else (64-byte lines; both are whole lines long)
-byte	vid_buffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(64)));
+// M20: the span engine writes the z buffer in SDRAM, and the CPU drops it
+// from its cache after (port/span_engine.c): it must share no cache line
+// with anything else (64-byte lines; it's whole lines long). The frame
+// buffers are the port's two display buffers (RGB565, drawn into in turn:
+// vid.buffer is the one not on the screen, QG_Init and QG_DrawFrame set it).
 short	zbuffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(64)));
 #else
 byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
@@ -59,10 +60,16 @@ void	VID_Init (unsigned char *palette)
 	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;
 	vid.maxwarpheight = vid.height = vid.conheight = BASEHEIGHT;
 	vid.aspect = 1.0;
+#ifdef M20
+	vid.numpages = 2;	// (so the status bar and the rest are drawn into both)
+#else
 	vid.numpages = 1;
+#endif
 	vid.colormap = host_colormap;
 	vid.fullbright = 256 - LittleLong (*((int *)vid.colormap + 2048));
+#ifndef M20
 	vid.buffer = vid.conbuffer = vid_buffer;
+#endif
 	vid.rowbytes = vid.conrowbytes = BASEWIDTH;
 	
 	d_pzbuffer = zbuffer;

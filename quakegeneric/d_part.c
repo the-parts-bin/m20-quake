@@ -53,7 +53,7 @@ void D_DrawParticle (particle_t *pparticle)
 {
 	vec3_t	local, transformed;
 	float	zi;
-	byte	*pdest;
+	scr_t	*pdest;
 	short	*pz;
 	int		i, izi, pix, count, u, v;
 
@@ -102,7 +102,7 @@ void D_DrawParticle (particle_t *pparticle)
 			if (pz[0] <= izi)
 			{
 				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pdest[0] = SCR(pparticle->color);
 			}
 		}
 		break;
@@ -115,13 +115,13 @@ void D_DrawParticle (particle_t *pparticle)
 			if (pz[0] <= izi)
 			{
 				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pdest[0] = SCR(pparticle->color);
 			}
 
 			if (pz[1] <= izi)
 			{
 				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pdest[1] = SCR(pparticle->color);
 			}
 		}
 		break;
@@ -134,19 +134,19 @@ void D_DrawParticle (particle_t *pparticle)
 			if (pz[0] <= izi)
 			{
 				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pdest[0] = SCR(pparticle->color);
 			}
 
 			if (pz[1] <= izi)
 			{
 				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pdest[1] = SCR(pparticle->color);
 			}
 
 			if (pz[2] <= izi)
 			{
 				pz[2] = izi;
-				pdest[2] = pparticle->color;
+				pdest[2] = SCR(pparticle->color);
 			}
 		}
 		break;
@@ -159,25 +159,25 @@ void D_DrawParticle (particle_t *pparticle)
 			if (pz[0] <= izi)
 			{
 				pz[0] = izi;
-				pdest[0] = pparticle->color;
+				pdest[0] = SCR(pparticle->color);
 			}
 
 			if (pz[1] <= izi)
 			{
 				pz[1] = izi;
-				pdest[1] = pparticle->color;
+				pdest[1] = SCR(pparticle->color);
 			}
 
 			if (pz[2] <= izi)
 			{
 				pz[2] = izi;
-				pdest[2] = pparticle->color;
+				pdest[2] = SCR(pparticle->color);
 			}
 
 			if (pz[3] <= izi)
 			{
 				pz[3] = izi;
-				pdest[3] = pparticle->color;
+				pdest[3] = SCR(pparticle->color);
 			}
 		}
 		break;
@@ -192,7 +192,7 @@ void D_DrawParticle (particle_t *pparticle)
 				if (pz[i] <= izi)
 				{
 					pz[i] = izi;
-					pdest[i] = pparticle->color;
+					pdest[i] = SCR(pparticle->color);
 				}
 			}
 		}

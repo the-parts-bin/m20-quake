@@ -25,7 +25,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "d_local.h"
 
-unsigned char	*r_turb_pbase, *r_turb_pdest;
+unsigned char	*r_turb_pbase;
+scr_t			*r_turb_pdest;
 fixed16_t		r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
 int				*r_turb_turb;
 int				r_turb_spancount;
@@ -45,11 +46,11 @@ void D_WarpScreen (void)
 {
 	int		w, h;
 	int		u,v;
-	byte	*dest;
+	scr_t	*dest;
 	int		*turb;
 	int		*col;
-	byte	**row;
-	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
+	scr_t	**row;
+	scr_t	*rowptr[MAXHEIGHT+(AMP2*2)];
 	int		column[MAXWIDTH+(AMP2*2)];
 	float	wratio, hratio;
 
@@ -102,7 +103,7 @@ void D_DrawTurbulent8Span (void)
 	{
 		sturb = ((r_turb_s + r_turb_turb[(r_turb_t>>16)&(CYCLE-1)])>>16)&63;
 		tturb = ((r_turb_t + r_turb_turb[(r_turb_s>>16)&(CYCLE-1)])>>16)&63;
-		*r_turb_pdest++ = *(r_turb_pbase + (tturb<<6) + sturb);
+		*r_turb_pdest++ = SCR(*(r_turb_pbase + (tturb<<6) + sturb));
 		r_turb_s += r_turb_sstep;
 		r_turb_t += r_turb_tstep;
 	} while (--r_turb_spancount > 0);
@@ -133,8 +134,7 @@ void Turbulent8 (espan_t *pspan)
 
 	do
 	{
-		r_turb_pdest = (unsigned char *)((byte *)d_viewbuffer +
-				(screenwidth * pspan->v) + pspan->u);
+		r_turb_pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
 
 		count = pspan->count;
 
@@ -248,7 +248,8 @@ D_DrawSpans8
 void D_DrawSpans8 (espan_t *pspan)
 {
 	int				count, spancount;
-	unsigned char	*pbase, *pdest;
+	unsigned char	*pbase;
+	scr_t			*pdest;
 	fixed16_t		s, t, snext, tnext, sstep, tstep;
 	float			sdivz, tdivz, zi, z, du, dv, spancountminus1;
 	float			sdivz8stepu, tdivz8stepu, zi8stepu;
@@ -264,8 +265,7 @@ void D_DrawSpans8 (espan_t *pspan)
 
 	do
 	{
-		pdest = (unsigned char *)((byte *)d_viewbuffer +
-				(screenwidth * pspan->v) + pspan->u);
+		pdest = d_viewbuffer + (screenwidth * pspan->v) + pspan->u;
 
 		count = pspan->count;
 
@@ -360,7 +360,7 @@ void D_DrawSpans8 (espan_t *pspan)
 
 			do
 			{
-				*pdest++ = *(pbase + (s >> 16) + (t >> 16) * cachewidth);
+				*pdest++ = SCR(*(pbase + (s >> 16) + (t >> 16) * cachewidth));
 				s += sstep;
 				t += tstep;
 			} while (--spancount > 0);

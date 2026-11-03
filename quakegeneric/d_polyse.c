@@ -83,7 +83,8 @@ int				d_aspancount, d_countextrastep;
 spanpackage_t			*a_spans;
 spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
-byte					*d_pdest, *d_ptex;
+scr_t					*d_pdest;
+byte					*d_ptex;
 short					*d_pz;
 int						d_sfrac, d_tfrac, d_light, d_zi;
 int						d_ptexextrastep, d_sfracextrastep;
@@ -166,7 +167,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 				*zbuf = z;
 				pix = skintable[fv->v[3]>>16][fv->v[2]>>16];
 				pix = ((byte *)acolormap)[pix + (fv->v[4] & 0xFF00) ];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = pix;
+				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = SCR(pix);
 			}
 		}
 	}
@@ -375,7 +376,7 @@ split:
 		
 		*zbuf = z;
 		pix = d_pcolormap[skintable[new[3]>>16][new[2]>>16]];
-		d_viewbuffer[d_scantable[new[1]] + new[0]] = pix;
+		d_viewbuffer[d_scantable[new[1]] + new[0]] = SCR(pix);
 	}
 
 nodraw:
@@ -607,7 +608,7 @@ D_PolysetDrawSpans8
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
 	int		lcount;
-	byte	*lpdest;
+	scr_t	*lpdest;
 	byte	*lptex;
 	int		lsfrac, ltfrac;
 	int		llight;
@@ -660,7 +661,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			{
 				if ((lzi >> 16) >= *lpz)
 				{
-					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
+					*lpdest = SCR(((byte *)acolormap)[*lptex + (llight & 0xFF00)]);
 // gel mapping					*lpdest = gelmap[*lpdest];
 					*lpz = lzi >> 16;
 				}
@@ -710,7 +711,7 @@ void D_PolysetFillSpans8 (spanpackage_t *pspanpackage)
 	while (1)
 	{
 		int		lcount;
-		byte	*lpdest;
+		scr_t	*lpdest;
 
 		lcount = pspanpackage->count;
 
@@ -723,7 +724,7 @@ void D_PolysetFillSpans8 (spanpackage_t *pspanpackage)
 
 			do
 			{
-				*lpdest++ = color;
+				*lpdest++ = SCR(color);
 			} while (--lcount);
 		}
 
@@ -776,7 +777,7 @@ void D_RasterizeAliasPolySmooth (void)
 	d_light = plefttop[4];
 	d_zi = plefttop[5];
 
-	d_pdest = (byte *)d_viewbuffer +
+	d_pdest = d_viewbuffer +
 			ystart * screenwidth + plefttop[0];
 	d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];
 
@@ -860,7 +861,7 @@ void D_RasterizeAliasPolySmooth (void)
 		d_light = plefttop[4];
 		d_zi = plefttop[5];
 
-		d_pdest = (byte *)d_viewbuffer + ystart * screenwidth + plefttop[0];
+		d_pdest = d_viewbuffer + ystart * screenwidth + plefttop[0];
 		d_pz = d_pzbuffer + ystart * d_zwidth + plefttop[0];
 
 		if (height == 1)
@@ -1052,7 +1053,7 @@ split:
 		d_pzbuffer[ofs] = new[5];
 		pix = skintable[new[3]>>16][new[2]>>16];
 //		pix = ((byte *)acolormap)[pix + (new[4] & 0xFF00)];
-		d_viewbuffer[ofs] = pix;
+		d_viewbuffer[ofs] = SCR(pix);
 	}
 
 // recursively continue

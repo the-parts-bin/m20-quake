@@ -48,7 +48,7 @@ int			r_maxsurfsseen, r_maxedgesseen, r_cnumsurfs;
 qboolean	r_surfsonstack;
 int			r_clipflags;
 
-byte		*r_warpbuffer;
+scr_t		*r_warpbuffer;
 
 byte		*r_stack_start;
 
@@ -934,9 +934,9 @@ void R_RenderView_ (void)
 #ifdef M20
 	// M20: static (64 KB on the stack overran it into the heap), and
 	// whole cache lines only, see vid_null.c
-	static byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT] __attribute__((aligned(64)));
+	static scr_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT] __attribute__((aligned(64)));
 #else
-	byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
+	scr_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
 #endif
 
 	r_warpbuffer = warpbuffer;

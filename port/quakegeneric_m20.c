@@ -1,12 +1,14 @@
 // quakegeneric platform layer for the m20 SoC (../README.md). A first
 // version: enough to see Quake run.
 //
-// Video: Quake draws its 320 x 240 frame into vid_buffer (vid_null.c);
-// QG_DrawFrame copies it into one of two display buffers, writes that back
-// from the data cache, and points the line table at it: each Quake row on
-// two of the 480 lines, as 8 bpp 2x lines (640 pixels, columns 40..679 by
-// VIDEO_HWIN). The table is rewritten at once, not at the vertical blank,
-// so a frame can tear.
+// Video: RGB565. Quake draws its 320 x 240 frame straight into one of two
+// display buffers (vid.buffer: the one not on the screen; the span engine
+// draws the world's surfaces into it, lit per pixel); QG_DrawFrame writes
+// it back from the data cache, points the line table at it (each Quake row
+// on two of the 480 lines, as 16 bpp 2x lines: 640 pixels, columns 40..679
+// by VIDEO_HWIN) and gives Quake the other. The table is rewritten at
+// once, not at the vertical blank, so a frame can tear. d_8to16 is the
+// palette as RGB565 (with its flashes), for everything else Quake draws.
 //
 // Input: keys from the UART (tools/run.py's terminal): arrows, Enter, Esc,
 // Tab, Backspace, space (jump), f (fire: Ctrl), other characters as
@@ -44,6 +46,7 @@ int disk_from_flash(void);    // ../m20/firmware/diskio.c
 #define VIDEO_HWIN    (*(volatile uint32_t *)(M9B_CTRL + 0x18u))
 #define LINE_BLANK    (0u << 22)
 #define LINE_8BPP     (2u << 22)
+#define LINE_16BPP    (1u << 22)
 #define LINE_2X       (1u << 28)
 
 #define W QUAKEGENERIC_RES_X
@@ -95,15 +98,17 @@ void M20_Halt(void) {
 // ---------------------------------------------------------------------
 // Video
 // ---------------------------------------------------------------------
-static uint8_t *disp[2];   // 64-byte aligned display buffers
-static int back;           // the one not on screen
-static uint16_t pal565[256];   // the palette as shown (for screenshots)
+static uint16_t *disp[2];  // 64-byte aligned display buffers, RGB565
+static int back;           // the one not on screen (vid.buffer)
+unsigned short d_8to16[256];   // the palette as shown, RGB565 (vid.h, SCR)
+uint32_t m20_pal888[256];      // and as RGB888, for the span engine
+int m20_pal_changed;           // (port/span_engine.c loads it into the engine)
 
-// Line-table entry for 8 bpp data at a (cached, even) SDRAM address: the
+// Line-table entry for 16 bpp data at a (cached, even) SDRAM address: the
 // 256-byte block and the offset into it in 2-byte units.
-static uint32_t line_8bpp(uintptr_t addr) {
+static uint32_t line_16bpp(uintptr_t addr) {
     uint32_t off = (uint32_t)addr - M9B_PSRAM_BASE;
-    return LINE_8BPP | ((off & 255u) / 2u) << 15 | (off >> 8);
+    return LINE_16BPP | ((off & 255u) / 2u) << 15 | (off >> 8);
 }
 
 #include "quakedef.h"   // (Cvar_RegisterVariable, for the span engine's switch)
@@ -112,28 +117,30 @@ extern cvar_t r_m20span, r_m20lit;    // port/span_engine.c
 void QG_Init(void) {
     Cvar_RegisterVariable(&r_m20span);
     Cvar_RegisterVariable(&r_m20lit);
-    uint8_t *p = malloc(2u * W * H + 64u);
+    uint8_t *p = malloc(4u * W * H + 64u);
     if (!p) Sys_Error("QG_Init: no memory for the display buffers");
     uintptr_t base = ((uintptr_t)p + 63u) & ~(uintptr_t)63;
-    disp[0] = (uint8_t *)base;
-    disp[1] = (uint8_t *)(base + W * H);
-    memset(disp[0], 0, 2u * W * H);
+    disp[0] = (uint16_t *)base;
+    disp[1] = (uint16_t *)(base + 2u * W * H);
+    memset(disp[0], 0, 4u * W * H);
+    back = 0;
+    vid.buffer = vid.conbuffer = disp[back];
     for (uint32_t y = 0; y < 480u; y++) VRAM_TABLE[y] = LINE_BLANK;
     VIDEO_HWIN = (40u + 2u * W) << 16 | 40u;
     VIDEO_CTRL = 1;
 }
 
 void QG_DrawFrame(void *pixels) {
-    uint8_t *buf = disp[back];
-    memcpy(buf, pixels, W * H);
-    for (uintptr_t a = (uintptr_t)buf; a < (uintptr_t)buf + W * H; a += 64u)
+    uint16_t *buf = pixels;   // (disp[back])
+    for (uintptr_t a = (uintptr_t)buf; a < (uintptr_t)buf + 2u * W * H; a += 64u)
         asm volatile("cbo.clean (%0)" :: "r"(a) : "memory");
     for (uint32_t y = 0; y < H; y++) {
-        uint32_t e = line_8bpp((uintptr_t)&buf[y * W]) | LINE_2X;
+        uint32_t e = line_16bpp((uintptr_t)&buf[y * W]) | LINE_2X;
         VRAM_TABLE[2u * y] = e;
         VRAM_TABLE[2u * y + 1u] = e;
     }
     back ^= 1;
+    vid.buffer = vid.conbuffer = disp[back];
 }
 
 void QG_SetPalette(unsigned char palette[768]) {
@@ -142,9 +149,12 @@ void QG_SetPalette(unsigned char palette[768]) {
         uint32_t a = (uint32_t)(c[0] >> 3) << 11 | (uint32_t)(c[1] >> 2) << 5 | (c[2] >> 3);
         uint32_t b = (uint32_t)(c[3] >> 3) << 11 | (uint32_t)(c[4] >> 2) << 5 | (c[5] >> 3);
         VRAM_PALETTE[i / 2u] = a | b << 16;
-        pal565[i] = (uint16_t)a;
-        pal565[i + 1u] = (uint16_t)b;
+        d_8to16[i] = (uint16_t)a;
+        d_8to16[i + 1u] = (uint16_t)b;
+        m20_pal888[i] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
+        m20_pal888[i + 1u] = (uint32_t)c[3] << 16 | (uint32_t)c[4] << 8 | c[5];
     }
+    m20_pal_changed = 1;
 }
 
 // ---------------------------------------------------------------------
@@ -174,8 +184,8 @@ static void press(int key) {
     held_since = CLOCK_CNT;
 }
 
-extern void m20_screenshot(uint32_t w, uint32_t h, const uint16_t *pal565,
-                           const uint8_t *pixels, uint32_t stride);   // runtime/shot.c
+extern void m20_screenshot16(uint32_t w, uint32_t h, const uint16_t *pixels,
+                             uint32_t stride);                         // runtime/shot.c
 extern void prof_report(void);                                        // runtime/trap.c
 
 static void uart_poll(void) {
@@ -184,7 +194,7 @@ static void uart_poll(void) {
         if (!(d & UART_RX_VALID)) break;
         int c = (int)(d & 0xFFu);
         if (c == 0x1C) {   // m9bctl.py shot: the frame on screen
-            if (disp[0]) m20_screenshot(W, H, pal565, disp[back ^ 1], W);
+            if (disp[0]) m20_screenshot16(W, H, disp[back ^ 1], W);
             continue;
         }
 #ifdef M9B_PROFILE

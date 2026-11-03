@@ -83,34 +83,16 @@ D_DrawSolidSurface
 void D_DrawSolidSurface (surf_t *surf, int color)
 {
 	espan_t	*span;
-	byte	*pdest;
-	int		u, u2, pix;
-	
-	pix = (color<<24) | (color<<16) | (color<<8) | color;
+	scr_t	*pdest, pix;
+	int		u, u2;
+
+	pix = SCR(color);
 	for (span=surf->spans ; span ; span=span->pnext)
 	{
-		pdest = (byte *)d_viewbuffer + screenwidth*span->v;
-		u = span->u;
+		pdest = d_viewbuffer + screenwidth*span->v;
 		u2 = span->u + span->count - 1;
-		((byte *)pdest)[u] = pix;
-
-		if (u2 - u < 8)
-		{
-			for (u++ ; u <= u2 ; u++)
-				((byte *)pdest)[u] = pix;
-		}
-		else
-		{
-			for (u++ ; u & 3 ; u++)
-				((byte *)pdest)[u] = pix;
-
-			u2 -= 4;
-			for ( ; u <= u2 ; u+=4)
-				*(int *)((byte *)pdest + u) = pix;
-			u2 += 4;
-			for ( ; u <= u2 ; u++)
-				((byte *)pdest)[u] = pix;
-		}
+		for (u = span->u ; u <= u2 ; u++)
+			pdest[u] = pix;
 	}
 }
 

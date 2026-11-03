@@ -225,5 +225,5 @@ extern float	skytime;
 extern int		c_surf;
 extern vrect_t	scr_vrect;
 
-extern byte		*r_warpbuffer;
+extern scr_t		*r_warpbuffer;
 

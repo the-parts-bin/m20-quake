@@ -25,6 +25,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // a pixel can be one, two, or four bytes
 typedef byte pixel_t;
 
+// A pixel on the screen, and a palette index's colour there: M20's frame
+// buffer is RGB565 (d_8to16: the palette as shown, with its flashes; the
+// world's surfaces come from the span engine, lit per pixel)
+#ifdef M20
+typedef unsigned short scr_t;
+extern unsigned short d_8to16[256];
+#define SCR(c) (d_8to16[(byte)(c)])
+#else
+typedef byte scr_t;
+#define SCR(c) (c)
+#endif
+
 typedef struct vrect_s
 {
 	int				x,y,width,height;
@@ -33,7 +45,7 @@ typedef struct vrect_s
 
 typedef struct
 {
-	pixel_t			*buffer;		// invisible buffer
+	scr_t			*buffer;		// invisible buffer
 	pixel_t			*colormap;		// 256 * VID_GRADES size
 	unsigned short	*colormap16;	// 256 * VID_GRADES size
 	int				fullbright;		// index of first fullbright color
@@ -43,13 +55,13 @@ typedef struct
 	float			aspect;		// width / height -- < 0 is taller than wide
 	int				numpages;
 	int				recalc_refdef;	// if true, recalc vid-based stuff
-	pixel_t			*conbuffer;
+	scr_t			*conbuffer;
 	int				conrowbytes;
 	unsigned		conwidth;
 	unsigned		conheight;
 	int				maxwarpwidth;
 	int				maxwarpheight;
-	pixel_t			*direct;		// direct drawing to framebuffer, if not
+	scr_t			*direct;		// direct drawing to framebuffer, if not
 									//  NULL
 } viddef_t;
 

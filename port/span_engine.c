@@ -36,18 +36,19 @@
 // cache, for textures with power-of-2 sizes)
 cvar_t r_m20span = {"r_m20span", M20_SPAN_DEFAULT};
 // With r_m20span 1: 1 lit spans in the engine (below), 0 the surface cache for all
-cvar_t r_m20lit = {"r_m20lit", "0"};   // (0 until rtl/span_engine.v has lit spans)
+cvar_t r_m20lit = {"r_m20lit", "1"};
 
 // The engine's arithmetic (shared with the RTL's test vectors), writing
 // into the frame and z buffers
-static uint8_t *pix_fb;
+static uint16_t *pix_fb;   // (RGB565)
 static int16_t *pix_zb;
 static const uint8_t *pix_tex;
-static const uint8_t *pix_cmap;
 static const uint8_t *pix_light;
-#define SC_PIXEL(i, tex_off, z16) do { pix_fb[i] = pix_tex[tex_off]; pix_zb[i] = (z16); } while (0)
-#define SC_LPIXEL(i, tex_off, row, z16) \
-    do { pix_fb[i] = pix_cmap[(row) * 256 + pix_tex[tex_off]]; pix_zb[i] = (z16); } while (0)
+extern uint32_t m20_pal888[256];   // the palette (quakegeneric_m20.c)
+extern int m20_pal_changed;
+#define SC_PIXEL(i, tex_off, z16) do { pix_fb[i] = d_8to16[pix_tex[tex_off]]; pix_zb[i] = (z16); } while (0)
+#define SC_LPIXEL(i, tex_off, scale, z16) \
+    do { uint8_t t_ = pix_tex[tex_off]; pix_fb[i] = sc_shade(m20_pal888[t_], t_, scale); pix_zb[i] = (z16); } while (0)
 #define SC_LIGHTMAP(k) ((int32_t)pix_light[k])
 #include "span_core.h"
 
@@ -126,7 +127,7 @@ static void cache_inval(const void *p, uint32_t n) {
         asm volatile("cbo.inval (%0)" :: "r"(a) : "memory");
 }
 
-static uint32_t fb_bytes(void) { return (uint32_t)screenwidth * vid.height; }
+static uint32_t fb_bytes(void) { return (uint32_t)screenwidth * vid.height * 2u; }
 static uint32_t zb_bytes(void) { return (uint32_t)d_zwidth * vid.height * 2u; }
 
 // Before the world's surfaces: the engine writes the frame and z buffers
@@ -147,6 +148,13 @@ void M20_SpanFrameBegin(void) {
         last = now;
     }
     if (mode != 1) return;
+    // The palette, when it changed (a flash, a new one)
+    if (m20_pal_changed) {
+        hw_wait();
+        SPAN_HW[24] = 0;
+        for (int k = 0; k < 256; k++) SPAN_HW[25] = m20_pal888[k];
+        m20_pal_changed = 0;
+    }
     // Unlit, which also empties the texel cache: once a frame, so that a
     // new map's textures are read afresh
     SPAN_HW[0] = LIT_B;
@@ -179,7 +187,7 @@ void M20_SpanCpuBegin(void) {
 void M20_SpanCpuEnd(espan_t *spans) {
     if (mode != 1) return;
     for (espan_t *p = spans; p; p = p->pnext) {
-        cache_flush((uint8_t *)d_viewbuffer + p->v * screenwidth + p->u, (uint32_t)p->count);
+        cache_flush(d_viewbuffer + p->v * screenwidth + p->u, 2u * (uint32_t)p->count);
         cache_flush(d_pzbuffer + p->v * d_zwidth + p->u, 2u * (uint32_t)p->count);
     }
 }
@@ -255,7 +263,7 @@ void M20_SpanSurface(espan_t *spans) {
         return;
     }
     for (espan_t *p = spans; p; p = p->pnext) {
-        pix_fb = (uint8_t *)d_viewbuffer + p->v * screenwidth + p->u;
+        pix_fb = d_viewbuffer + p->v * screenwidth + p->u;
         pix_zb = d_pzbuffer + p->v * d_zwidth + p->u;
         sc_span(&eng, p->u, p->v, p->count);
     }
@@ -278,7 +286,6 @@ void R_BuildLightMap(void);
 surfcache_t *D_SCAlloc(int width, int size);   // d_surf.c
 extern unsigned blocklights[18 * 18];
 
-static int cmap_loaded;     // the colormap is in the engine
 
 static int log2_pow2(int x) {
     return (x > 0 && !(x & (x - 1))) ? __builtin_ctz((unsigned)x) : -1;
@@ -318,15 +325,6 @@ static uint8_t *lightmap(msurface_t *pface, int lw, int lh) {
     return lm;
 }
 
-// The colormap into the engine (once; it doesn't change)
-static void load_cmap(void) {
-    hw_wait();
-    const uint8_t *cm = (const uint8_t *)vid.colormap;
-    SPAN_HW[24] = 0;                       // its write address
-    for (int k = 0; k < 64 * 256; k++) SPAN_HW[25] = cm[k];
-    cmap_loaded = 1;
-}
-
 void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
     texture_t *mt = R_TextureAnimation(pface->texinfo->texture);
     int lw = (pface->extents[0] >> 4) + 1, lh = (pface->extents[1] >> 4) + 1;
@@ -340,7 +338,6 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
     eng.lw = lw;
     const uint8_t *tex = (const uint8_t *)mt + mt->offsets[miplevel];
     if (mode == 1) {
-        if (!cmap_loaded) load_cmap();
         if (!mt->m20clean) {
             // the whole miptex (all four levels) into SDRAM, once
             cache_clean(mt, mt->offsets[3] + (mt->width >> 3) * (mt->height >> 3));
@@ -371,10 +368,9 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
         return;
     }
     pix_tex = tex;
-    pix_cmap = (const uint8_t *)vid.colormap;
     pix_light = lm;
     for (espan_t *p = spans; p; p = p->pnext) {
-        pix_fb = (uint8_t *)d_viewbuffer + p->v * screenwidth + p->u;
+        pix_fb = d_viewbuffer + p->v * screenwidth + p->u;
         pix_zb = d_pzbuffer + p->v * d_zwidth + p->u;
         sc_span_lit(&eng, p->u, p->v, p->count);
     }

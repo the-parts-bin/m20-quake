@@ -134,7 +134,7 @@ smoothly scrolled off.
 */
 void Draw_Character (int x, int y, int num)
 {
-	byte			*dest;
+	scr_t			*dest;
 	byte			*source;
 	unsigned short	*pusdest;
 	int				drawline;	
@@ -170,21 +170,21 @@ void Draw_Character (int x, int y, int num)
 	while (drawline--)
 	{
 		if (source[0])
-			dest[0] = source[0];
+			dest[0] = SCR(source[0]);
 		if (source[1])
-			dest[1] = source[1];
+			dest[1] = SCR(source[1]);
 		if (source[2])
-			dest[2] = source[2];
+			dest[2] = SCR(source[2]);
 		if (source[3])
-			dest[3] = source[3];
+			dest[3] = SCR(source[3]);
 		if (source[4])
-			dest[4] = source[4];
+			dest[4] = SCR(source[4]);
 		if (source[5])
-			dest[5] = source[5];
+			dest[5] = SCR(source[5]);
 		if (source[6])
-			dest[6] = source[6];
+			dest[6] = SCR(source[6]);
 		if (source[7])
-			dest[7] = source[7];
+			dest[7] = SCR(source[7]);
 		source += 128;
 		dest += vid.conrowbytes;
 	}
@@ -216,7 +216,7 @@ of the code.
 */
 void Draw_DebugChar (char num)
 {
-	byte			*dest;
+	scr_t			*dest;
 	byte			*source;
 	int				drawline;	
 	extern byte		*draw_chars;
@@ -235,14 +235,14 @@ void Draw_DebugChar (char num)
 
 	while (drawline--)
 	{
-		dest[0] = source[0];
-		dest[1] = source[1];
-		dest[2] = source[2];
-		dest[3] = source[3];
-		dest[4] = source[4];
-		dest[5] = source[5];
-		dest[6] = source[6];
-		dest[7] = source[7];
+		dest[0] = SCR(source[0]);
+		dest[1] = SCR(source[1]);
+		dest[2] = SCR(source[2]);
+		dest[3] = SCR(source[3]);
+		dest[4] = SCR(source[4]);
+		dest[5] = SCR(source[5]);
+		dest[6] = SCR(source[6]);
+		dest[7] = SCR(source[7]);
 		source += 128;
 		dest += 320;
 	}
@@ -255,7 +255,8 @@ Draw_Pic
 */
 void Draw_Pic (int x, int y, qpic_t *pic)
 {
-	byte			*dest, *source;
+	scr_t			*dest;
+	byte			*source;
 	unsigned short	*pusdest;
 	int				v, u;
 
@@ -273,7 +274,8 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 
 	for (v=0 ; v<pic->height ; v++)
 	{
-			Q_memcpy (dest, source, pic->width);
+			for (u=0 ; u<pic->width ; u++)
+				dest[u] = SCR(source[u]);
 			dest += vid.rowbytes;
 			source += pic->width;
 	}
@@ -287,7 +289,8 @@ Draw_TransPic
 */
 void Draw_TransPic (int x, int y, qpic_t *pic)
 {
-	byte	*dest, *source, tbyte;
+	scr_t	*dest;
+	byte	*source, tbyte;
 	unsigned short	*pusdest;
 	int				v, u;
 
@@ -307,7 +310,7 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 		{
 			for (u=0 ; u<pic->width ; u++)
 				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
-					dest[u] = tbyte;
+					dest[u] = SCR(tbyte);
 
 			dest += vid.rowbytes;
 			source += pic->width;
@@ -320,21 +323,21 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 			for (u=0 ; u<pic->width ; u+=8)
 			{
 				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
-					dest[u] = tbyte;
+					dest[u] = SCR(tbyte);
 				if ( (tbyte=source[u+1]) != TRANSPARENT_COLOR)
-					dest[u+1] = tbyte;
+					dest[u+1] = SCR(tbyte);
 				if ( (tbyte=source[u+2]) != TRANSPARENT_COLOR)
-					dest[u+2] = tbyte;
+					dest[u+2] = SCR(tbyte);
 				if ( (tbyte=source[u+3]) != TRANSPARENT_COLOR)
-					dest[u+3] = tbyte;
+					dest[u+3] = SCR(tbyte);
 				if ( (tbyte=source[u+4]) != TRANSPARENT_COLOR)
-					dest[u+4] = tbyte;
+					dest[u+4] = SCR(tbyte);
 				if ( (tbyte=source[u+5]) != TRANSPARENT_COLOR)
-					dest[u+5] = tbyte;
+					dest[u+5] = SCR(tbyte);
 				if ( (tbyte=source[u+6]) != TRANSPARENT_COLOR)
-					dest[u+6] = tbyte;
+					dest[u+6] = SCR(tbyte);
 				if ( (tbyte=source[u+7]) != TRANSPARENT_COLOR)
-					dest[u+7] = tbyte;
+					dest[u+7] = SCR(tbyte);
 			}
 			dest += vid.rowbytes;
 			source += pic->width;
@@ -351,7 +354,8 @@ Draw_TransPicTranslate
 */
 void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
 {
-	byte	*dest, *source, tbyte;
+	scr_t	*dest;
+	byte	*source, tbyte;
 	unsigned short	*pusdest;
 	int				v, u;
 
@@ -371,7 +375,7 @@ void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
 		{
 			for (u=0 ; u<pic->width ; u++)
 				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
-					dest[u] = translation[tbyte];
+					dest[u] = SCR(translation[tbyte]);
 
 			dest += vid.rowbytes;
 			source += pic->width;
@@ -384,21 +388,21 @@ void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
 			for (u=0 ; u<pic->width ; u+=8)
 			{
 				if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
-					dest[u] = translation[tbyte];
+					dest[u] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+1]) != TRANSPARENT_COLOR)
-					dest[u+1] = translation[tbyte];
+					dest[u+1] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+2]) != TRANSPARENT_COLOR)
-					dest[u+2] = translation[tbyte];
+					dest[u+2] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+3]) != TRANSPARENT_COLOR)
-					dest[u+3] = translation[tbyte];
+					dest[u+3] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+4]) != TRANSPARENT_COLOR)
-					dest[u+4] = translation[tbyte];
+					dest[u+4] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+5]) != TRANSPARENT_COLOR)
-					dest[u+5] = translation[tbyte];
+					dest[u+5] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+6]) != TRANSPARENT_COLOR)
-					dest[u+6] = translation[tbyte];
+					dest[u+6] = SCR(translation[tbyte]);
 				if ( (tbyte=source[u+7]) != TRANSPARENT_COLOR)
-					dest[u+7] = translation[tbyte];
+					dest[u+7] = SCR(translation[tbyte]);
 			}
 			dest += vid.rowbytes;
 			source += pic->width;
@@ -441,6 +445,7 @@ void Draw_ConsoleBackground (int lines)
 {
 	int				x, y, v;
 	byte			*src, *dest;
+	scr_t			*sdest;
 	unsigned short	*pusdest;
 	int				f, fstep;
 	qpic_t			*conback;
@@ -456,27 +461,28 @@ void Draw_ConsoleBackground (int lines)
 		Draw_CharToConback (ver[x], dest+(x<<3));
 	
 // draw the pic
-	dest = vid.conbuffer;
+	sdest = vid.conbuffer;
 
-	for (y=0 ; y<lines ; y++, dest += vid.conrowbytes)
+	for (y=0 ; y<lines ; y++, sdest += vid.conrowbytes)
 	{
 		v = (vid.conheight - lines + y)*200/vid.conheight;
 		src = conback->data + v*320;
 		if (vid.conwidth == 320)
-			memcpy (dest, src, vid.conwidth);
+			for (x=0 ; x<320 ; x++)
+				sdest[x] = SCR(src[x]);
 		else
 		{
 			f = 0;
 			fstep = 320*0x10000/vid.conwidth;
 			for (x=0 ; x<vid.conwidth ; x+=4)
 			{
-				dest[x] = src[f>>16];
+				sdest[x] = SCR(src[f>>16]);
 				f += fstep;
-				dest[x+1] = src[f>>16];
+				sdest[x+1] = SCR(src[f>>16]);
 				f += fstep;
-				dest[x+2] = src[f>>16];
+				sdest[x+2] = SCR(src[f>>16]);
 				f += fstep;
-				dest[x+3] = src[f>>16];
+				sdest[x+3] = SCR(src[f>>16]);
 				f += fstep;
 			}
 		}
@@ -494,7 +500,7 @@ void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc,
 {
 	byte	t;
 	int		i, j, srcdelta, destdelta;
-	byte	*pdest;
+	scr_t	*pdest;
 
 	pdest = vid.buffer + (prect->y * vid.rowbytes) + prect->x;
 
@@ -510,7 +516,7 @@ void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc,
 				t = *psrc;
 				if (t != TRANSPARENT_COLOR)
 				{
-					*pdest = t;
+					*pdest = SCR(t);
 				}
 
 				psrc++;
@@ -525,7 +531,8 @@ void R_DrawRect (vrect_t *prect, int rowbytes, byte *psrc,
 	{
 		for (i=0 ; i<prect->height ; i++)
 		{
-			memcpy (pdest, psrc, prect->width);
+			for (j=0 ; j<prect->width ; j++)
+				pdest[j] = SCR(psrc[j]);
 			psrc += rowbytes;
 			pdest += vid.rowbytes;
 		}
@@ -607,7 +614,7 @@ Fills a box of pixels with a single color
 */
 void Draw_Fill (int x, int y, int w, int h, int c)
 {
-	byte			*dest;
+	scr_t			*dest;
 	unsigned short	*pusdest;
 	unsigned		uc;
 	int				u, v;
@@ -615,7 +622,7 @@ void Draw_Fill (int x, int y, int w, int h, int c)
 	dest = vid.buffer + y*vid.rowbytes + x;
 	for (v=0 ; v<h ; v++, dest += vid.rowbytes)
 		for (u=0 ; u<w ; u++)
-			dest[u] = c;
+			dest[u] = SCR(c);
 }
 //=============================================================================
 
@@ -628,7 +635,7 @@ Draw_FadeScreen
 void Draw_FadeScreen (void)
 {
 	int			x,y;
-	byte		*pbuf;
+	scr_t		*pbuf;
 
 	VID_UnlockBuffer ();
 	S_ExtraUpdate ();
@@ -638,13 +645,13 @@ void Draw_FadeScreen (void)
 	{
 		int	t;
 
-		pbuf = (byte *)(vid.buffer + vid.rowbytes*y);
+		pbuf = vid.buffer + vid.rowbytes*y;
 		t = (y & 1) << 1;
 
 		for (x=0 ; x<vid.width ; x++)
 		{
 			if ((x & 3) != t)
-				pbuf[x] = 0;
+				pbuf[x] = SCR(0);
 		}
 	}
 

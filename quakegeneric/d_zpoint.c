@@ -30,7 +30,7 @@ D_DrawZPoint
 */
 void D_DrawZPoint (void)
 {
-	byte	*pdest;
+	scr_t	*pdest;
 	short	*pz;
 	int		izi;
 	
@@ -41,7 +41,7 @@ void D_DrawZPoint (void)
 	if (*pz <= izi)
 	{
 		*pz = izi;
-		*pdest = r_zpointdesc.color;
+		*pdest = SCR(r_zpointdesc.color);
 	}
 }
 
