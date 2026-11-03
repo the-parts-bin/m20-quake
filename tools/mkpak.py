@@ -5,7 +5,9 @@ models (maps/b_*.bsp), all the models, graphics and progs.dat, no sounds
 (the port has no sound driver yet: snd_null loads none) and no demos, with
 quake.rc's startdemos line dropped (the demos' maps aren't there).
 
-Usage: mkpak.py PAK0.PAK out/pak0.pak [--maps e1m1,e1m3] [--sounds] [--demos]"""
+Usage: mkpak.py PAK0.PAK out/pak0.pak [--maps e1m1,e1m3] [--sounds] [--demos]
+                [--demo demo1]    (that demo only, for timedemo; demo1 plays
+                                  on e1m3)"""
 import argparse
 import struct
 
@@ -15,6 +17,7 @@ ap.add_argument("dst")
 ap.add_argument("--maps", default="e1m1", help="maps to keep, comma separated")
 ap.add_argument("--sounds", action="store_true", help="keep sound/")
 ap.add_argument("--demos", action="store_true", help="keep the demos (and startdemos)")
+ap.add_argument("--demo", default="", help="keep these demos (comma separated), without startdemos")
 args = ap.parse_args()
 
 src = open(args.src, "rb").read()
@@ -35,7 +38,7 @@ for name, data in files:
         continue
     if name.startswith("sound/") and not args.sounds:
         continue
-    if name.endswith(".dem") and not args.demos:
+    if name.endswith(".dem") and not args.demos and name[:-4] not in args.demo.split(","):
         continue
     if name == "quake.rc" and not args.demos:
         data = b"\n".join(l for l in data.split(b"\n") if not l.startswith(b"startdemos"))

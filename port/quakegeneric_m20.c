@@ -246,8 +246,6 @@ void QG_Quit(void) {
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
-    // Straight into the first map (the cut-down pak has no demos to show)
-    static char *args[] = {"quake", "+map", "e1m1", NULL};
     asm volatile("csrw mtvec, %0" :: "r"(&trap_entry));
 #if defined(M20_STALL) || defined(M9B_PROFILE)
     *(volatile uint32_t *)(M9B_CTRL + 0x4u) = 15u;   // IRQ_PENDING: clear
@@ -255,8 +253,26 @@ int main(int argc, char *argv[]) {
     asm volatile("csrs mie, %0" :: "r"(1u << 11));
     asm volatile("csrs mstatus, %0" :: "r"(1u << 3));
 #endif
-    printf("Quake on the m20\n");
-    QG_Create(3, args);
+    // The command line: QUAKE/m20args.txt on the disk if it's there (say
+    // "+timedemo demo1"), else straight into the first map (the cut-down
+    // pak has no demo loop)
+    static char line[256];
+    static char *args[32] = {"quake", "+map", "e1m1", NULL};
+    int nargs = 3;
+    FILE *f = fopen(M20_BASEDIR "/m20args.txt", "r");
+    if (f) {
+        size_t n = fread(line, 1, sizeof line - 1, f);
+        fclose(f);
+        line[n] = 0;
+        nargs = 1;
+        for (char *p = strtok(line, " \t\r\n"); p && nargs < 31; p = strtok(NULL, " \t\r\n"))
+            args[nargs++] = p;
+        args[nargs] = NULL;
+    }
+    printf("Quake on the m20:");
+    for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
+    printf("\n");
+    QG_Create(nargs, args);
     double last = M20_Time();
     uint32_t frames = 0;
     double report = last;
@@ -266,9 +282,20 @@ int main(int argc, char *argv[]) {
         last = now;
         frames++;
         if (now - report >= 5.0) {
-            printf("%u frames in %d ms: %d.%d fps, %u misaligned accesses\n", (unsigned)frames,
+            // the span engine's counters (../m20/rtl/span_engine.v): pixels,
+            // texel cache misses, cpu_clk cycles busy
+            static uint32_t e_pix, e_miss, e_busy;
+            volatile uint32_t *eng = (volatile uint32_t *)0x490000u;
+            uint32_t p = eng[21], m = eng[22], b = eng[23];
+            printf("%u frames in %d ms: %d.%d fps, %u misaligned; engine per frame: %u pixels, "
+                   "%u misses, %u%% busy\n", (unsigned)frames,
                    (int)((now - report) * 1000.0), (int)(frames / (now - report)),
-                   (int)(frames * 10 / (now - report)) % 10, (unsigned)misaligned_traps);
+                   (int)(frames * 10 / (now - report)) % 10, (unsigned)misaligned_traps,
+                   (unsigned)((p - e_pix) / frames), (unsigned)((m - e_miss) / frames),
+                   (unsigned)((uint64_t)(b - e_busy) * 100u / (uint64_t)((now - report) * CLOCK_HZ)));
+            e_pix = p;
+            e_miss = m;
+            e_busy = b;
             frames = 0;
             report = now;
         }
