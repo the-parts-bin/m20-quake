@@ -304,9 +304,18 @@ void D_DrawSurfaces (void)
 
 				D_CalcGradients (pface);
 
+#ifdef M20
+				// M20: the span engine (port/span_engine.c), unless
+				// r_m20span is 0
+				if (r_m20span.value)
+					M20_SpanSurface (s->spans);
+				else
+#endif
+				{
 				(*d_drawspans) (s->spans);
 
 				D_DrawZSpans (s->spans);
+				}
 
 				if (s->insubmodel)
 				{

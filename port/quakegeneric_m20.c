@@ -101,7 +101,11 @@ static uint32_t line_8bpp(uintptr_t addr) {
     return LINE_8BPP | ((off & 255u) / 2u) << 15 | (off >> 8);
 }
 
+#include "quakedef.h"   // (Cvar_RegisterVariable, for the span engine's switch)
+extern cvar_t r_m20span;    // port/span_engine.c
+
 void QG_Init(void) {
+    Cvar_RegisterVariable(&r_m20span);
     uint8_t *p = malloc(2u * W * H + 64u);
     uintptr_t base = ((uintptr_t)p + 63u) & ~(uintptr_t)63;
     disp[0] = (uint8_t *)base;

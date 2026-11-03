@@ -103,3 +103,9 @@ extern float	d_scalemip[3];
 
 extern void (*d_drawspans) (espan_t *pspan);
 
+
+#ifdef M20
+// M20: the span engine (port/span_engine.c)
+extern cvar_t r_m20span;
+void M20_SpanSurface (espan_t *spans);
+#endif
