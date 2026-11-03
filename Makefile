@@ -5,6 +5,9 @@
 #   make           single-precision floats in hardware (the core's F
 #                  extension; build/)
 #   make FPU=0     soft float, for a core without it (build-sf/)
+#   make PERF=1    per-region CPU counters (build-perf/), printed at the
+#                  timedemo's end (port/m20_perf.h; a CPU with
+#                  --performance-counters 4)
 #   make PROFILE=1 the PC-sampling profiler (build-prof/): Ctrl-P on the
 #                  UART (../m20/tools/m9bctl.py prof) prints it
 
@@ -23,6 +26,8 @@ FPU ?= 1
 ifeq ($(FPU),1)
 ifdef PROFILE
 B    := build-prof
+else ifdef PERF
+B    := build-perf
 else
 B    := build
 endif
@@ -72,6 +77,12 @@ QUAKE_FLAGS := -fsingle-precision-constant -include port/m20_math.h
 ifdef PROFILE
 CFLAGS += -DM9B_PROFILE -DPROF_TOP=0   # every bucket, in address order
 endif
+ifdef ARGS
+CFLAGS += -DM20_ARGS='"$(ARGS)"'   # the command line when the disk has no QUAKE/m20args.txt
+endif
+ifdef PERF
+CFLAGS += -DM20_PERF   # per-region CPU counters, printed at the timedemo's end (port/m20_perf.h)
+endif
 CFLAGS += -MMD -MP
 CFLAGS += $(EXTRA)
 
@@ -97,9 +108,15 @@ $(B)/quake.bin: $(B)/quake.elf
 $(B):
 	mkdir -p $(B)
 
+# ARGS changes the built-in command line: a stamp, so that a different
+# ARGS rebuilds quakegeneric_m20.o
+$(B)/args.stamp: FORCE | $(B)
+	@echo '$(ARGS)' | cmp -s - $@ || echo '$(ARGS)' > $@
+$(B)/quakegeneric_m20.o: $(B)/args.stamp
+
 -include $(OBJ:.o=.d)
 
 clean:
-	rm -rf build build-sf build-prof
+	rm -rf build build-sf build-prof build-perf
 
-.PHONY: all clean
+.PHONY: all clean FORCE

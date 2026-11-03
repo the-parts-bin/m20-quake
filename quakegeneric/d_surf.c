@@ -342,7 +342,9 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 	r_drawsurf.surf = surface;
 
 	c_surf++;
+	M20_PERF_BEGIN (M20_PERF_BUILD);
 	R_DrawSurface ();
+	M20_PERF_END (M20_PERF_BUILD);
 #ifdef M20
 	// M20: into SDRAM for the span engine (port/span_engine.c)
 	M20_SpanSurfaceBuilt (cache->data, r_drawsurf.surfwidth * r_drawsurf.surfheight);

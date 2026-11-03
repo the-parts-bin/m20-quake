@@ -712,7 +712,9 @@ void R_ScanEdges (void)
 			}
 			else
 			{
+				M20_PERF_BEGIN (M20_PERF_DSURF);
 				D_DrawSurfaces ();
+				M20_PERF_END (M20_PERF_DSURF);
 			}
 
 		// clear the surface span pointers
@@ -746,7 +748,11 @@ void R_ScanEdges (void)
 	if (r_drawculledpolys)
 		R_DrawCulledPolys ();
 	else
+	{
+		M20_PERF_BEGIN (M20_PERF_DSURF);
 		D_DrawSurfaces ();
+		M20_PERF_END (M20_PERF_DSURF);
+	}
 }
 
 

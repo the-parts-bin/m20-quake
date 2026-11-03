@@ -879,7 +879,9 @@ void R_EdgeDrawing (void)
 		rw_time1 = Sys_FloatTime ();
 	}
 
+	M20_PERF_BEGIN (M20_PERF_WORLD);
 	R_RenderWorld ();
+	M20_PERF_END (M20_PERF_WORLD);
 
 	if (r_drawculledpolys)
 		R_ScanEdges ();
@@ -894,7 +896,9 @@ void R_EdgeDrawing (void)
 		db_time1 = rw_time2;
 	}
 
+	M20_PERF_BEGIN (M20_PERF_BENTS);
 	R_DrawBEntitiesOnList ();
+	M20_PERF_END (M20_PERF_BENTS);
 
 	if (r_dspeeds.value)
 	{
@@ -910,7 +914,11 @@ void R_EdgeDrawing (void)
 	}
 	
 	if (!(r_drawpolys | r_drawculledpolys))
+	{
+		M20_PERF_BEGIN (M20_PERF_SCAN);
 		R_ScanEdges ();
+		M20_PERF_END (M20_PERF_SCAN);
+	}
 }
 
 
@@ -975,7 +983,9 @@ SetVisibilityByPassages ();
 		de_time1 = se_time2;
 	}
 
+	M20_PERF_BEGIN (M20_PERF_ENTS);
 	R_DrawEntitiesOnList ();
+	M20_PERF_END (M20_PERF_ENTS);
 
 	if (r_dspeeds.value)
 	{
@@ -983,7 +993,9 @@ SetVisibilityByPassages ();
 		dv_time1 = de_time2;
 	}
 
+	M20_PERF_BEGIN (M20_PERF_VIEWMODEL);
 	R_DrawViewModel ();
+	M20_PERF_END (M20_PERF_VIEWMODEL);
 
 	if (r_dspeeds.value)
 	{
@@ -991,7 +1003,9 @@ SetVisibilityByPassages ();
 		dp_time1 = Sys_FloatTime ();
 	}
 
+	M20_PERF_BEGIN (M20_PERF_PARTICLES);
 	R_DrawParticles ();
+	M20_PERF_END (M20_PERF_PARTICLES);
 
 	if (r_dspeeds.value)
 		dp_time2 = Sys_FloatTime ();
@@ -1041,7 +1055,9 @@ void R_RenderView (void)
 	if ( (intptr_t)(&r_warpbuffer) & 3 )
 		Sys_Error ("Globals are missaligned");
 
+	M20_PERF_BEGIN (M20_PERF_VIEW);
 	R_RenderView_ ();
+	M20_PERF_END (M20_PERF_VIEW);
 }
 
 /*

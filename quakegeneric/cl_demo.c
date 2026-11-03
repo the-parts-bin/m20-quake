@@ -105,7 +105,12 @@ int CL_GetMessage (void)
 			// if this is the second frame, grab the real td_starttime
 			// so the bogus time on the first frame doesn't count
 				if (host_framecount == cls.td_startframe + 1)
+				{
 					cls.td_starttime = realtime;
+#ifdef M20
+					M20_PerfReset ();   // M20: the per-region counters (make PERF=1)
+#endif
+				}
 			}
 			else if ( /* cl.time > 0 && */ cl.time <= cl.mtime[0])
 			{
@@ -335,6 +340,9 @@ void CL_FinishTimeDemo (void)
 	if (!time)
 		time = 1;
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);
+#ifdef M20
+	M20_PerfReport ();
+#endif
 }
 
 /*

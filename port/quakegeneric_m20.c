@@ -27,6 +27,11 @@
 
 #include "quakegeneric.h"
 #include "clock.h"      // CLOCK_HZ: ../m20/firmware
+#include "fatfs/ff.h"   // f_stat (../m20/firmware/fatfs)
+
+int m9b_fs_mount(void);       // ../m20/runtime/syscalls.c
+int m9b_fs_use_flash(void);
+int disk_from_flash(void);    // ../m20/firmware/diskio.c
 #include "m9b_map.h"
 
 #define CLOCK_CNT     (*(volatile uint32_t *)(M9B_TIMING + 0xCu))
@@ -260,6 +265,19 @@ int main(int argc, char *argv[]) {
     static char line[256];
     static char *args[32] = {"quake", "+map", "e1m1", NULL};
     int nargs = 3;
+#ifdef M20_ARGS
+    // (make ARGS="...": the command line when the disk has no m20args.txt)
+    static char built_in[] = M20_ARGS;
+    nargs = 1;
+    for (char *p = strtok(built_in, " "); p && nargs < 31; p = strtok(NULL, " "))
+        args[nargs++] = p;
+    args[nargs] = NULL;
+#endif
+    // An SD card without the game: the disk image in the flash instead
+    if (m9b_fs_mount() == 0 && !disk_from_flash() && f_stat(M20_BASEDIR "/id1", NULL) != FR_OK) {
+        printf("no " M20_BASEDIR "/id1 on the SD card: %s\n",
+               m9b_fs_use_flash() ? "using the flash's disk image" : "and no disk image in the flash");
+    }
     FILE *f = fopen(M20_BASEDIR "/m20args.txt", "r");
     if (f) {
         size_t n = fread(line, 1, sizeof line - 1, f);
