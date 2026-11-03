@@ -9,8 +9,9 @@
 // so a frame can tear.
 //
 // Input: keys from the UART (tools/run.py's terminal): arrows, Enter, Esc,
-// Tab, Backspace, space (jump), f or ',' (fire: Ctrl), other characters as
-// themselves. A terminal only sends presses, so a key counts as held until
+// Tab, Backspace, space (jump), f (fire: Ctrl), other characters as
+// themselves (Quake's default.cfg binds ',' and '.' to strafing, ` to the
+// console). A terminal only sends presses, so a key counts as held until
 // 150 ms after its last repeat. (USB keyboard and mouse: to do.)
 //
 // Time: CLOCK_CNT (the CPU clock, 54 MHz) extended to 64 bits.
@@ -52,6 +53,28 @@ static uint64_t ticks(void) {
 
 double M20_Time(void) {
     return (double)ticks() / (double)CLOCK_HZ;
+}
+
+// The runtime's trap handler (../m20/runtime/trap.c): misaligned loads and
+// stores emulated, other exceptions reported; its interrupt hooks (no
+// interrupts are enabled yet).
+extern void trap_entry(void);
+extern uint32_t misaligned_traps;
+// With -DM20_STALL: every 2 s, where the program was (a stall finder).
+void vblank_flip(void) {
+#ifdef M20_STALL
+    static uint32_t n;
+    if (++n % 120u == 0) {
+        uint32_t pc, ra;
+        asm volatile("csrr %0, mepc" : "=r"(pc));
+        ra = 0;
+        printf("[pc %08lx]\n", (unsigned long)pc);
+        (void)ra;
+    }
+#endif
+}
+void sound_irq(uint32_t pending) {
+    (void)pending;
 }
 
 void M20_Halt(void) {
@@ -154,7 +177,7 @@ static void uart_poll(void) {
         if (c == '\r' || c == '\n') press(K_ENTER);
         else if (c == '\t') press(K_TAB);
         else if (c == 8 || c == 127) press(K_BACKSPACE);
-        else if (c == 'f' || c == ',') press(K_CTRL);
+        else if (c == 'f') press(K_CTRL);
         else if (c >= 32 && c < 127) press(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
     }
     if (esc_state == 1) {   // a lone ESC: Escape
@@ -197,9 +220,17 @@ void QG_Quit(void) {
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
-    static char *args[] = {"quake", NULL};
+    // Straight into the first map (the cut-down pak has no demos to show)
+    static char *args[] = {"quake", "+map", "e1m1", NULL};
+    asm volatile("csrw mtvec, %0" :: "r"(&trap_entry));
+#ifdef M20_STALL
+    *(volatile uint32_t *)(M9B_CTRL + 0x4u) = 15u;   // IRQ_PENDING: clear
+    *(volatile uint32_t *)(M9B_CTRL + 0x8u) = 1u;    // IRQ_ENABLE: vblank
+    asm volatile("csrs mie, %0" :: "r"(1u << 11));
+    asm volatile("csrs mstatus, %0" :: "r"(1u << 3));
+#endif
     printf("Quake on the m20\n");
-    QG_Create(1, args);
+    QG_Create(3, args);
     double last = M20_Time();
     uint32_t frames = 0;
     double report = last;
@@ -209,8 +240,9 @@ int main(int argc, char *argv[]) {
         last = now;
         frames++;
         if (now - report >= 5.0) {
-            printf("%u frames in %d ms: %d.%d fps\n", (unsigned)frames, (int)((now - report) * 1000.0),
-                   (int)(frames / (now - report)), (int)(frames * 10 / (now - report)) % 10);
+            printf("%u frames in %d ms: %d.%d fps, %u misaligned accesses\n", (unsigned)frames,
+                   (int)((now - report) * 1000.0), (int)(frames / (now - report)),
+                   (int)(frames * 10 / (now - report)) % 10, (unsigned)misaligned_traps);
             frames = 0;
             report = now;
         }

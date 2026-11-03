@@ -52,6 +52,11 @@ OBJ        = $(patsubst %.c,$(B)/%.o,$(notdir $(SRC))) $(patsubst %.S,$(B)/%.o,$
 vpath %.c quakegeneric port $(CORE_RT) $(CORE_FW) $(CORE_FW)/fatfs
 vpath %.S $(CORE_RT)
 
+# Quake indexes past the end of arrays on purpose in places (model.c's
+# texinfo vecs[2][4] as 8 floats, r_part.c): GCC's loop optimizations
+# assume that never happens and broke the loops (a bad pointer in
+# Mod_LoadTexinfo).
+CFLAGS += -fno-aggressive-loop-optimizations
 CFLAGS += -MMD -MP
 CFLAGS += $(EXTRA)
 

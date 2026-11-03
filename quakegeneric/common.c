@@ -1032,8 +1032,12 @@ void COM_CheckRegistered (void)
 	if (h == -1)
 	{
 		Con_Printf ("Playing shareware version.\n");
+#ifndef M20
+		// M20: the m20's pak is the shareware one cut down to fit its 6 MB
+		// flash disk (tools/mkpak.py), which counts as modified here
 		if (com_modified)
 			Sys_Error ("You must have the registered version to use modified games");
+#endif
 		return;
 	}
 
