@@ -312,6 +312,17 @@ void D_DrawSurfaces (void)
 				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
 				* pface->texinfo->mipadjust);
 
+#ifdef M20
+				// M20: lit spans (port/span_engine.c): the texture and
+				// its lightmap at draw time, no surface cache
+				if (M20_SpanLit (pface, miplevel))
+				{
+					D_CalcGradients (pface);
+					M20_SpanSurfaceLit (s->spans, pface, miplevel);
+				}
+				else
+				{
+#endif
 			// FIXME: make this passed in to D_CacheSurface
 				pcurrentcache = D_CacheSurface (pface, miplevel);
 
@@ -332,6 +343,9 @@ void D_DrawSurfaces (void)
 
 				D_DrawZSpans (s->spans);
 				}
+#ifdef M20
+				}
+#endif
 
 				if (s->insubmodel)
 				{

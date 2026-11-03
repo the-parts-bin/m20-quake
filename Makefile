@@ -108,11 +108,11 @@ $(B)/quake.bin: $(B)/quake.elf
 $(B):
 	mkdir -p $(B)
 
-# ARGS changes the built-in command line: a stamp, so that a different
-# ARGS rebuilds quakegeneric_m20.o
+# ARGS and SPAN change the built-in command line and r_m20span's
+# default: a stamp, so that different values rebuild what uses them
 $(B)/args.stamp: FORCE | $(B)
-	@echo '$(ARGS)' | cmp -s - $@ || echo '$(ARGS)' > $@
-$(B)/quakegeneric_m20.o: $(B)/args.stamp
+	@echo '$(ARGS)|$(SPAN)' | cmp -s - $@ || echo '$(ARGS)|$(SPAN)' > $@
+$(B)/quakegeneric_m20.o $(B)/span_engine.o: $(B)/args.stamp
 
 -include $(OBJ:.o=.d)
 

@@ -107,10 +107,11 @@ static uint32_t line_8bpp(uintptr_t addr) {
 }
 
 #include "quakedef.h"   // (Cvar_RegisterVariable, for the span engine's switch)
-extern cvar_t r_m20span;    // port/span_engine.c
+extern cvar_t r_m20span, r_m20lit;    // port/span_engine.c
 
 void QG_Init(void) {
     Cvar_RegisterVariable(&r_m20span);
+    Cvar_RegisterVariable(&r_m20lit);
     uint8_t *p = malloc(2u * W * H + 64u);
     if (!p) Sys_Error("QG_Init: no memory for the display buffers");
     uintptr_t base = ((uintptr_t)p + 63u) & ~(uintptr_t)63;

@@ -118,4 +118,6 @@ void M20_SpanCpuBegin (void);
 void M20_SpanCpuEnd (espan_t *spans);
 void M20_SpanSurfaceBuilt (const void *data, int bytes);
 void M20_SpanCacheReuse (surfcache_t *sc);
+int M20_SpanLit (msurface_t *pface, int miplevel);
+void M20_SpanSurfaceLit (espan_t *spans, msurface_t *pface, int miplevel);
 #endif
