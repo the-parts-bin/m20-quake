@@ -108,4 +108,11 @@ extern void (*d_drawspans) (espan_t *pspan);
 // M20: the span engine (port/span_engine.c)
 extern cvar_t r_m20span;
 void M20_SpanSurface (espan_t *spans);
+int M20_SpanOn (void);
+void M20_SpanFrameBegin (void);
+void M20_SpanFrameEnd (void);
+void M20_SpanCpuBegin (void);
+void M20_SpanCpuEnd (espan_t *spans);
+void M20_SpanSurfaceBuilt (const void *data, int bytes);
+void M20_SpanCacheAlloc (void);
 #endif

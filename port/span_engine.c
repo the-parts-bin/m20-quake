@@ -28,7 +28,7 @@
 #include "quakedef.h"
 #include "d_local.h"
 
-cvar_t r_m20span = {"r_m20span", "1"};   // 0: Quake's own span drawers
+cvar_t r_m20span = {"r_m20span", "1"};   // 0: Quake's own span drawers, 1 the engine, 2 the C model
 
 // The engine's arithmetic (shared with the RTL's test vectors), writing
 // into the frame and z buffers
@@ -65,6 +65,94 @@ static int32_t fix(float x, int32_t e) {
     return (int32_t)lrintf(ldexpf(x, e));
 }
 
+// ---------------------------------------------------------------------
+// The hardware (../m20/rtl/span_engine.v): commands into its FIFO at
+// 0x490000 + 4 r (r = 0: a span), the buffers' registers, its status
+// ---------------------------------------------------------------------
+#define SPAN_HW      ((volatile uint32_t *)0x490000u)
+#define SPAN_BUSY    (1u << 31)
+#define SDRAM_OFF(p) ((uint32_t)(uintptr_t)(p) - 0x800000u)
+
+// r_m20span, as it was when the frame began: 0 Quake's own drawers, 1 the
+// engine, 2 the C model
+static int mode;
+
+static void hw_wait(void) {
+    while (SPAN_HW[20] & SPAN_BUSY) {
+    }
+}
+
+// The data cache over [p, p + n): written back and kept (clean), written
+// back and dropped (flush), or dropped (inval)
+static void cache_clean(const void *p, uint32_t n) {
+    for (uintptr_t a = (uintptr_t)p & ~(uintptr_t)63; a < (uintptr_t)p + n; a += 64u)
+        asm volatile("cbo.clean (%0)" :: "r"(a) : "memory");
+}
+static void cache_flush(const void *p, uint32_t n) {
+    for (uintptr_t a = (uintptr_t)p & ~(uintptr_t)63; a < (uintptr_t)p + n; a += 64u)
+        asm volatile("cbo.flush (%0)" :: "r"(a) : "memory");
+}
+static void cache_inval(const void *p, uint32_t n) {
+    for (uintptr_t a = (uintptr_t)p & ~(uintptr_t)63; a < (uintptr_t)p + n; a += 64u)
+        asm volatile("cbo.inval (%0)" :: "r"(a) : "memory");
+}
+
+static uint32_t fb_bytes(void) { return (uint32_t)screenwidth * vid.height; }
+static uint32_t zb_bytes(void) { return (uint32_t)d_zwidth * vid.height * 2u; }
+
+// Before the world's surfaces: the engine writes the frame and z buffers
+// in SDRAM, so whatever the CPU has of them in its cache goes back first.
+void M20_SpanFrameBegin(void) {
+    mode = (int)r_m20span.value;
+    if (mode != 1) return;
+    SPAN_HW[16] = SDRAM_OFF(d_viewbuffer);
+    SPAN_HW[17] = (uint32_t)screenwidth;
+    SPAN_HW[18] = SDRAM_OFF(d_pzbuffer);
+    SPAN_HW[19] = (uint32_t)d_zwidth;
+    cache_flush(d_viewbuffer, fb_bytes());
+    cache_flush(d_pzbuffer, zb_bytes());
+}
+
+// After them: wait for the engine, and drop the CPU's (stale) copies, so
+// that the models, particles and the rest see what it drew.
+void M20_SpanFrameEnd(void) {
+    if (mode != 1) return;
+    hw_wait();
+    cache_inval(d_viewbuffer, fb_bytes());
+    cache_inval(d_pzbuffer, zb_bytes());
+}
+
+// Around a surface the CPU draws itself (sky, water, the background): the
+// engine done first, the CPU's lines written back after, so that the two
+// never hold different parts of a line.
+void M20_SpanCpuBegin(void) {
+    if (mode == 1) hw_wait();
+}
+
+void M20_SpanCpuEnd(espan_t *spans) {
+    if (mode != 1) return;
+    for (espan_t *p = spans; p; p = p->pnext) {
+        cache_flush((uint8_t *)d_viewbuffer + p->v * screenwidth + p->u, (uint32_t)p->count);
+        cache_flush(d_pzbuffer + p->v * d_zwidth + p->u, 2u * (uint32_t)p->count);
+    }
+}
+
+// A surface just built in the surface cache (d_surf.c): to SDRAM, where
+// the engine reads it.
+void M20_SpanSurfaceBuilt(const void *data, int bytes) {
+    if (mode == 1) cache_clean(data, (uint32_t)bytes);
+}
+
+// Surface cache memory about to be reused (d_surf.c, D_SCAlloc): spans
+// still queued may read from it.
+void M20_SpanCacheAlloc(void) {
+    if (mode == 1) hw_wait();
+}
+
+int M20_SpanOn(void) {
+    return mode;
+}
+
 void M20_SpanSurface(espan_t *spans) {
     static int ready;
     if (!ready) {
@@ -88,6 +176,27 @@ void M20_SpanSurface(espan_t *spans) {
     eng.tadj = tadjust;
     eng.smax = bbextents;
     eng.tmax = bbextentt;
+    if (mode == 1) {
+        // The registers in the engine's order, then the spans
+        SPAN_HW[1] = SDRAM_OFF(cacheblock);
+        SPAN_HW[2] = (uint32_t)eng.tex_w | (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18;
+        SPAN_HW[3] = (uint32_t)eng.s0;
+        SPAN_HW[4] = (uint32_t)eng.su;
+        SPAN_HW[5] = (uint32_t)eng.sv;
+        SPAN_HW[6] = (uint32_t)eng.t0;
+        SPAN_HW[7] = (uint32_t)eng.tu;
+        SPAN_HW[8] = (uint32_t)eng.tv;
+        SPAN_HW[9] = (uint32_t)eng.z0;
+        SPAN_HW[10] = (uint32_t)eng.zu;
+        SPAN_HW[11] = (uint32_t)eng.zv;
+        SPAN_HW[12] = (uint32_t)eng.sadj;
+        SPAN_HW[13] = (uint32_t)eng.tadj;
+        SPAN_HW[14] = (uint32_t)eng.smax;
+        SPAN_HW[15] = (uint32_t)eng.tmax;
+        for (espan_t *p = spans; p; p = p->pnext)
+            SPAN_HW[0] = (uint32_t)p->count << 17 | (uint32_t)p->v << 9 | (uint32_t)p->u;
+        return;
+    }
     for (espan_t *p = spans; p; p = p->pnext) {
         pix_fb = (uint8_t *)d_viewbuffer + p->v * screenwidth + p->u;
         pix_zb = d_pzbuffer + p->v * d_zwidth + p->u;

@@ -182,6 +182,9 @@ void D_DrawSurfaces (void)
 	currententity = &cl_entities[0];
 	TransformVector (modelorg, transformed_modelorg);
 	VectorCopy (transformed_modelorg, world_transformed_modelorg);
+#ifdef M20
+	M20_SpanFrameBegin ();   // M20: the span engine's frame (port/span_engine.c)
+#endif
 
 // TODO: could preset a lot of this at mode set time
 	if (r_drawflat.value)
@@ -195,8 +198,14 @@ void D_DrawSurfaces (void)
 			d_zistepv = s->d_zistepv;
 			d_ziorigin = s->d_ziorigin;
 
+#ifdef M20
+			M20_SpanCpuBegin ();
+#endif
 			D_DrawSolidSurface (s, (intptr_t)s->data & 0xFF);
 			D_DrawZSpans (s->spans);
+#ifdef M20
+			M20_SpanCpuEnd (s->spans);
+#endif
 		}
 	}
 	else
@@ -207,6 +216,13 @@ void D_DrawSurfaces (void)
 				continue;
 
 			r_drawnpolycount++;
+
+#ifdef M20
+			// M20: surfaces the CPU draws itself, around the span engine
+			int m20_cpu = s->flags & (SURF_DRAWSKY | SURF_DRAWBACKGROUND | SURF_DRAWTURB);
+			if (m20_cpu)
+				M20_SpanCpuBegin ();
+#endif
 
 			d_zistepu = s->d_zistepu;
 			d_zistepv = s->d_zistepv;
@@ -307,7 +323,7 @@ void D_DrawSurfaces (void)
 #ifdef M20
 				// M20: the span engine (port/span_engine.c), unless
 				// r_m20span is 0
-				if (r_m20span.value)
+				if (M20_SpanOn ())
 					M20_SpanSurface (s->spans);
 				else
 #endif
@@ -334,7 +350,14 @@ void D_DrawSurfaces (void)
 					R_TransformFrustum ();
 				}
 			}
+#ifdef M20
+			if (m20_cpu)
+				M20_SpanCpuEnd (s->spans);
+#endif
 		}
 	}
+#ifdef M20
+	M20_SpanFrameEnd ();
+#endif
 }
 

@@ -132,6 +132,9 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	surfcache_t             *new;
 	qboolean                wrapped_this_time;
 
+#ifdef M20
+	M20_SpanCacheAlloc ();   // M20: queued spans may read what this reuses
+#endif
 	if ((width < 0) || (width > 256))
 		Sys_Error ("D_SCAlloc: bad cache width %d\n", width);
 
@@ -328,6 +331,10 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 
 	c_surf++;
 	R_DrawSurface ();
+#ifdef M20
+	// M20: into SDRAM for the span engine (port/span_engine.c)
+	M20_SpanSurfaceBuilt (cache->data, r_drawsurf.surfwidth * r_drawsurf.surfheight);
+#endif
 
 	return surface->cachespots[miplevel];
 }
