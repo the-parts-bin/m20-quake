@@ -500,12 +500,30 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 	}
 	else
 	{
+#ifdef M20
+		// M20: FloorDivMod in integers (it works in software doubles)
+		int		q, r;
+
+		if (tn <= 0)
+			Sys_Error ("FloorDivMod: bad denominator %d\n", tn);
+		q = tm / tn;
+		r = tm - q * tn;
+		if (r < 0)
+		{
+			q--;
+			r += tn;
+		}
+		ubasestep = q;
+		erroradjustup = r;
+		erroradjustdown = tn;
+#else
 		dm = (double)tm;
 		dn = (double)tn;
 
 		FloorDivMod (dm, dn, &ubasestep, &erroradjustup);
 
 		erroradjustdown = dn;
+#endif
 	}
 }
 
@@ -595,6 +613,23 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	int		llight;
 	int		lzi;
 	short	*lpz;
+#ifdef M20
+	// M20: the per-pixel constants in locals (the byte and short stores
+	// below may alias any global, so GCC reloads them per pixel otherwise)
+	const byte	*cmap = (const byte *)acolormap;
+	const int	zistepx = r_zistepx, lstepx = r_lstepx, stepxwhole = a_ststepxwhole;
+	const int	sstepxfrac = a_sstepxfrac, tstepxfrac = a_tstepxfrac;
+	const int	skinwidth = r_affinetridesc.skinwidth;
+#define acolormap					cmap
+#define r_zistepx					zistepx
+#define r_lstepx					lstepx
+#define a_ststepxwhole				stepxwhole
+#define a_sstepxfrac				sstepxfrac
+#define a_tstepxfrac				tstepxfrac
+#define r_affinetridesc_skinwidth	skinwidth
+#else
+#define r_affinetridesc_skinwidth	r_affinetridesc.skinwidth
+#endif
 
 	do
 	{
@@ -640,7 +675,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 				ltfrac += a_tstepxfrac;
 				if (ltfrac & 0x10000)
 				{
-					lptex += r_affinetridesc.skinwidth;
+					lptex += r_affinetridesc_skinwidth;
 					ltfrac &= 0xFFFF;
 				}
 			} while (--lcount);
@@ -648,6 +683,15 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 		pspanpackage++;
 	} while (pspanpackage->count != -999999);
+#undef r_affinetridesc_skinwidth
+#ifdef M20
+#undef acolormap
+#undef r_zistepx
+#undef r_lstepx
+#undef a_ststepxwhole
+#undef a_sstepxfrac
+#undef a_tstepxfrac
+#endif
 }
 
 /*

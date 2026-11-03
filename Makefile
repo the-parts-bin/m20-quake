@@ -26,7 +26,7 @@ B    := build-prof
 else
 B    := build
 endif
-ARCH := -march=rv32imf_zba_zicbop_zicsr_zifencei_zicbom -mabi=ilp32f
+ARCH := -march=rv32imf_zba_zicbop_zicsr_zifencei_zicbom_zicboz -mabi=ilp32f
 else
 B    := build-sf
 ARCH := -march=rv32im_zba_zicbop_zicsr_zifencei_zicbom -mabi=ilp32

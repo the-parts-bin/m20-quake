@@ -93,6 +93,9 @@ void D_InitCaches (void *buffer, int size)
 	sc_base->next = NULL;
 	sc_base->owner = NULL;
 	sc_base->size = sc_size;
+#ifdef M20
+	sc_base->m20epoch = 0;
+#endif
 	
 	D_ClearCacheGuard ();
 }
@@ -132,9 +135,6 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	surfcache_t             *new;
 	qboolean                wrapped_this_time;
 
-#ifdef M20
-	M20_SpanCacheAlloc ();   // M20: queued spans may read what this reuses
-#endif
 	if ((width < 0) || (width > 256))
 		Sys_Error ("D_SCAlloc: bad cache width %d\n", width);
 
@@ -162,6 +162,9 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	new = sc_rover;
 	if (sc_rover->owner)
 		*sc_rover->owner = NULL;
+#ifdef M20
+	M20_SpanCacheReuse (sc_rover);   // M20: queued spans may still read what this reuses
+#endif
 	
 	while (new->size < size)
 	{
@@ -171,6 +174,9 @@ surfcache_t     *D_SCAlloc (int width, int size)
 			Sys_Error ("D_SCAlloc: hit the end of memory");
 		if (sc_rover->owner)
 			*sc_rover->owner = NULL;
+#ifdef M20
+		M20_SpanCacheReuse (sc_rover);
+#endif
 			
 		new->size += sc_rover->size;
 		new->next = sc_rover->next;
@@ -184,6 +190,9 @@ surfcache_t     *D_SCAlloc (int width, int size)
 		sc_rover->next = new->next;
 		sc_rover->width = 0;
 		sc_rover->owner = NULL;
+#ifdef M20
+		sc_rover->m20epoch = 0;
+#endif
 		new->next = sc_rover;
 		new->size = size;
 	}
@@ -317,6 +326,9 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 		cache->dlight = 0;
 
 	r_drawsurf.surfdat = (pixel_t *)cache->data;
+#ifdef M20
+	M20_SpanCacheReuse (cache);   // M20: redrawn in place (new lighting) while queued spans read it?
+#endif
 	
 	cache->texture = r_drawsurf.texture;
 	cache->lightadj[0] = r_drawsurf.lightadj[0];

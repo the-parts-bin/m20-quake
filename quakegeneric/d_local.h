@@ -45,6 +45,9 @@ typedef struct surfcache_s
 	unsigned			height;		// DEBUG only needed for debug
 	float				mipscale;
 	struct texture_s	*texture;	// checked for animating textures
+#ifdef M20
+	int					m20epoch;	// M20: the span engine may still read it if current (port/span_engine.c)
+#endif
 	byte				data[4];	// width*height elements
 } surfcache_t;
 
@@ -114,5 +117,5 @@ void M20_SpanFrameEnd (void);
 void M20_SpanCpuBegin (void);
 void M20_SpanCpuEnd (espan_t *spans);
 void M20_SpanSurfaceBuilt (const void *data, int bytes);
-void M20_SpanCacheAlloc (void);
+void M20_SpanCacheReuse (surfcache_t *sc);
 #endif

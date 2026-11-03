@@ -57,15 +57,19 @@ static int32_t exponent(float o, float du, float dv) {
     c = fabsf(o + h * dv); if (c > m) m = c;
     c = fabsf(o + w * du + h * dv); if (c > m) m = c;
     if (m < 1e-30f) return 60;
-    int e;
-    frexpf(m, &e);          // m < 2^e
-    e = 30 - e;
+    union { float f; uint32_t u; } b = {m};
+    int32_t e = 30 - ((int32_t)(b.u >> 23) - 126);   // m < 2^(exponent - 126), as frexpf (m is normal)
     if (e > 60) e = 60;
     return e;
 }
 
+// x 2^e (e in -98..60: a normal float scale), rounded to the nearest
+// integer (fcvt saturates what doesn't fit, which the exponent prevents)
 static int32_t fix(float x, int32_t e) {
-    return (int32_t)lrintf(ldexpf(x, e));
+    union { uint32_t u; float f; } scale = {(uint32_t)(e + 127) << 23};
+    int32_t r;
+    __asm__("fcvt.w.s %0, %1, rne" : "=r"(r) : "f"(x * scale.f));
+    return r;
 }
 
 // ---------------------------------------------------------------------
@@ -80,9 +84,14 @@ static int32_t fix(float x, int32_t e) {
 // engine, 2 the C model
 static int mode;
 
+// Bumped each time the engine is seen idle: a surface cache entry stamped
+// with the current epoch (M20_SpanSurface) may still be read by queued spans.
+static int epoch = 1;
+
 static void hw_wait(void) {
     while (SPAN_HW[20] & SPAN_BUSY) {
     }
+    epoch++;
 }
 
 // The data cache over [p, p + n): written back and kept (clean), written
@@ -153,10 +162,10 @@ void M20_SpanSurfaceBuilt(const void *data, int bytes) {
     if (mode == 1) cache_clean(data, (uint32_t)bytes);
 }
 
-// Surface cache memory about to be reused (d_surf.c, D_SCAlloc): spans
-// still queued may read from it.
-void M20_SpanCacheAlloc(void) {
-    if (mode == 1) hw_wait();
+// A surface cache entry about to be reused or redrawn (d_surf.c): wait
+// only if spans queued since the engine was last idle read from it.
+void M20_SpanCacheReuse(surfcache_t *sc) {
+    if (mode == 1 && sc->m20epoch == epoch) hw_wait();
 }
 
 int M20_SpanOn(void) {
@@ -187,6 +196,7 @@ void M20_SpanSurface(espan_t *spans) {
     eng.smax = bbextents;
     eng.tmax = bbextentt;
     if (mode == 1) {
+        ((surfcache_t *)((uint8_t *)cacheblock - offsetof(surfcache_t, data)))->m20epoch = epoch;
         // The registers in the engine's order, then the spans
         SPAN_HW[1] = SDRAM_OFF(cacheblock);
         SPAN_HW[2] = (uint32_t)eng.tex_w | (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18;

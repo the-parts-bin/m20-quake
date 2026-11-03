@@ -228,6 +228,10 @@ texture_t *R_TextureAnimation (texture_t *base)
 R_DrawSurface
 ===============
 */
+#ifdef M20
+static void M20_DrawSurface (unsigned char *basetptr, int soffset, int smax);
+#endif
+
 void R_DrawSurface (void)
 {
 	unsigned char	*basetptr;
@@ -284,6 +288,10 @@ void R_DrawSurface (void)
 	basetptr = &r_source[((((basetoffset >> r_drawsurf.surfmip) 
 		+ (tmax << 16)) % tmax) * twidth)];
 
+#ifdef M20
+	M20_DrawSurface (basetptr, soffset, smax);
+	return;
+#endif
 	pcolumndest = r_drawsurf.surfdat;
 
 	for (u=0 ; u<r_numhblocks; u++)
@@ -306,6 +314,116 @@ void R_DrawSurface (void)
 
 //=============================================================================
 
+#ifdef M20
+/*
+================
+M20_DrawSurface
+
+Quake's block drawers (R_DrawSurfaceBlock8_mip*) with the state in locals (a
+byte store may alias any global, so the originals reload them all per
+pixel), 4 pixels per word load and store when the source and destination
+allow, and the blocks in stripes (below). The light arithmetic is the
+original's, unsigned step differences included.
+================
+*/
+// One block: n x n texels from psource (rows sstep apart) into prowdest
+// (rows rowbytes apart), lit from the four light values around it
+static inline __attribute__((always_inline)) void M20_SurfBlock (const int shift,
+	const unsigned char *psource, unsigned char *prowdest, const unsigned *lp,
+	const int lw, const int sstep, const int rowbytes, const int words)
+{
+	const int		n = 1 << shift;
+	const unsigned char	*cmap = (const unsigned char *)vid.colormap;
+	int				i, b, ll, lr, lls, lrs, step, light;
+
+	ll = lp[0];
+	lr = lp[1];
+	lls = (lp[lw] - ll) >> shift;
+	lrs = (lp[lw + 1] - lr) >> shift;
+
+	for (i = 0; i < n; i++)
+	{
+		step = (ll - lr) >> shift;
+		light = lr;
+		if (words)
+		{
+#pragma GCC unroll 4
+			for (b = n - 4; b >= 0; b -= 4)
+			{
+				uint32_t s = *(const uint32_t *)(psource + b), p3, p2, p1, p0;
+				p3 = cmap[(light & 0xFF00) + (s >> 24)];		light += step;
+				p2 = cmap[(light & 0xFF00) + ((s >> 16) & 0xFF)];	light += step;
+				p1 = cmap[(light & 0xFF00) + ((s >> 8) & 0xFF)];	light += step;
+				p0 = cmap[(light & 0xFF00) + (s & 0xFF)];		light += step;
+				*(uint32_t *)(prowdest + b) = p3 << 24 | p2 << 16 | p1 << 8 | p0;
+			}
+		}
+		else
+		{
+			for (b = n - 1; b >= 0; b--)
+			{
+				prowdest[b] = cmap[(light & 0xFF00) + psource[b]];
+				light += step;
+			}
+		}
+		psource += sstep;
+		lr += lrs;
+		ll += lls;
+		prowdest += rowbytes;
+	}
+}
+
+// The whole surface, a stripe of blocks (n rows) at a time, left to right:
+// a stripe's texture and destination lines stay in the data cache (Quake's
+// column order runs a tall surface through more lines than the cache
+// holds, once per column). The destination lines wholly inside a stripe
+// are allocated with cbo.zero, without reading them from SDRAM first.
+static inline __attribute__((always_inline)) void M20_SurfStripes (const int shift,
+	unsigned char *basetptr, int soffset0, int smax)
+{
+	const int		n = 1 << shift;
+	const int		lw = r_lightwidth, sstep = sourcetstep, rowbytes = surfrowbytes;
+	const int		stripe = rowbytes << shift;
+	unsigned char	*prowsrc = basetptr, *pdest = r_drawsurf.surfdat;
+	const int		words = n >= 4 && !(((uintptr_t)basetptr | (uintptr_t)pdest |
+						(unsigned)sstep | (unsigned)rowbytes | (unsigned)r_stepback) & 3);
+	int				u, v, soffset;
+
+	for (v = 0; v < r_numvblocks; v++)
+	{
+		uintptr_t z = ((uintptr_t)pdest + 63) & ~(uintptr_t)63;
+		for (; z + 64 <= (uintptr_t)pdest + stripe; z += 64)
+			__asm__ volatile ("cbo.zero (%0)" :: "r"(z) : "memory");
+
+		soffset = soffset0;
+		for (u = 0; u < r_numhblocks; u++)
+		{
+			M20_SurfBlock (shift, prowsrc + soffset, pdest + (u << shift),
+				blocklights + v * lw + u, lw, sstep, rowbytes, words);
+			soffset += n;
+			if (soffset >= smax)
+				soffset = 0;
+		}
+
+		pdest += stripe;
+		prowsrc += sstep << shift;
+		if (prowsrc >= r_sourcemax)
+			prowsrc -= r_stepback;
+	}
+}
+
+static void M20_DrawSurface (unsigned char *basetptr, int soffset, int smax)
+{
+	switch (r_drawsurf.surfmip)
+	{
+	case 0: M20_SurfStripes (4, basetptr, soffset, smax); break;
+	case 1: M20_SurfStripes (3, basetptr, soffset, smax); break;
+	case 2: M20_SurfStripes (2, basetptr, soffset, smax); break;
+	default: M20_SurfStripes (1, basetptr, soffset, smax); break;
+	}
+}
+
+#endif
 /*
 ================
 R_DrawSurfaceBlock8_mip0
