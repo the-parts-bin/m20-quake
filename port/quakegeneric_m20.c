@@ -15,6 +15,11 @@
 // 150 ms after its last repeat. (USB keyboard and mouse: to do.)
 //
 // Time: CLOCK_CNT (the CPU clock, 54 MHz) extended to 64 bits.
+//
+// Inspection over the UART (../m20/tools/m9bctl.py): 0x1C sends the last
+// frame shown (shot), and in a profiling build (make PROFILE=1) 0x10
+// (Ctrl-P) prints the PC-sample profile gathered since the last one
+// (prof), sampled at each vertical blank.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -87,6 +92,7 @@ void M20_Halt(void) {
 // ---------------------------------------------------------------------
 static uint8_t *disp[2];   // 64-byte aligned display buffers
 static int back;           // the one not on screen
+static uint16_t pal565[256];   // the palette as shown (for screenshots)
 
 // Line-table entry for 8 bpp data at a (cached, even) SDRAM address: the
 // 256-byte block and the offset into it in 2-byte units.
@@ -125,6 +131,8 @@ void QG_SetPalette(unsigned char palette[768]) {
         uint32_t a = (uint32_t)(c[0] >> 3) << 11 | (uint32_t)(c[1] >> 2) << 5 | (c[2] >> 3);
         uint32_t b = (uint32_t)(c[3] >> 3) << 11 | (uint32_t)(c[4] >> 2) << 5 | (c[5] >> 3);
         VRAM_PALETTE[i / 2u] = a | b << 16;
+        pal565[i] = (uint16_t)a;
+        pal565[i + 1u] = (uint16_t)b;
     }
 }
 
@@ -155,11 +163,25 @@ static void press(int key) {
     held_since = CLOCK_CNT;
 }
 
+extern void m20_screenshot(uint32_t w, uint32_t h, const uint16_t *pal565,
+                           const uint8_t *pixels, uint32_t stride);   // runtime/shot.c
+extern void prof_report(void);                                        // runtime/trap.c
+
 static void uart_poll(void) {
     for (;;) {
         uint32_t d = UART_DATA;
         if (!(d & UART_RX_VALID)) break;
         int c = (int)(d & 0xFFu);
+        if (c == 0x1C) {   // m9bctl.py shot: the frame on screen
+            if (disp[0]) m20_screenshot(W, H, pal565, disp[back ^ 1], W);
+            continue;
+        }
+#ifdef M9B_PROFILE
+        if (c == 0x10) {   // m9bctl.py prof: the profile so far
+            prof_report();
+            continue;
+        }
+#endif
         if (esc_state == 1) {
             if (c == '[') { esc_state = 2; continue; }
             esc_state = 0;
@@ -223,7 +245,7 @@ int main(int argc, char *argv[]) {
     // Straight into the first map (the cut-down pak has no demos to show)
     static char *args[] = {"quake", "+map", "e1m1", NULL};
     asm volatile("csrw mtvec, %0" :: "r"(&trap_entry));
-#ifdef M20_STALL
+#if defined(M20_STALL) || defined(M9B_PROFILE)
     *(volatile uint32_t *)(M9B_CTRL + 0x4u) = 15u;   // IRQ_PENDING: clear
     *(volatile uint32_t *)(M9B_CTRL + 0x8u) = 1u;    // IRQ_ENABLE: vblank
     asm volatile("csrs mie, %0" :: "r"(1u << 11));

@@ -443,7 +443,7 @@ void R_LeadingEdge (edge_t *edge)
 	espan_t			*span;
 	surf_t			*surf, *surf2;
 	int				iu;
-	double			fu, newzi, testzi, newzitop, newzibottom;
+	m20_real		fu, newzi, testzi, newzitop, newzibottom;
 
 	if (edge->surfs[1])
 	{

@@ -351,7 +351,9 @@ void CrossProduct (vec3_t v1, vec3_t v2, vec3_t cross)
 	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
 }
 
+#ifndef M20   // M20: math.h has it (and port/m20_math.h maps it to sqrtf)
 double sqrt(double x);
+#endif
 
 vec_t Length(vec3_t v)
 {

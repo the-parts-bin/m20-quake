@@ -178,6 +178,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // #define IDGODS
 
 #include "common.h"
+
+// M20: the hot renderer's double locals (r_edge.c, r_bsp.c, d_scan.c,
+// r_main.c), from the x87 days, as float on the m20's single-precision
+// FPU (doubles are software there)
+#ifdef M20
+typedef float m20_real;
+#else
+typedef double m20_real;
+#endif
 #include "bspfile.h"
 #include "vid.h"
 #include "sys.h"

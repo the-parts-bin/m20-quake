@@ -5,6 +5,8 @@
 #   make           single-precision floats in hardware (the core's F
 #                  extension; build/)
 #   make FPU=0     soft float, for a core without it (build-sf/)
+#   make PROFILE=1 the PC-sampling profiler (build-prof/): Ctrl-P on the
+#                  UART (../m20/tools/m9bctl.py prof) prints it
 
 CROSS   ?= riscv64-unknown-elf-
 CC      := $(CROSS)gcc
@@ -19,7 +21,11 @@ CORE_RT := $(CORE)/runtime
 
 FPU ?= 1
 ifeq ($(FPU),1)
+ifdef PROFILE
+B    := build-prof
+else
 B    := build
+endif
 ARCH := -march=rv32imf_zba_zicbop_zicsr_zifencei_zicbom -mabi=ilp32f
 else
 B    := build-sf
@@ -43,7 +49,7 @@ LDFLAGS := $(ARCH) -specs=picolibc.specs --picolibc-buildtype=release \
            -T$(CORE_RT)/m9b.ld
 
 QUAKE_SRC := $(wildcard quakegeneric/*.c)
-PORT_SRC  := $(wildcard port/*.c) $(CORE_RT)/string.c $(CORE_RT)/syscalls.c $(CORE_RT)/trap.c
+PORT_SRC  := $(wildcard port/*.c) $(CORE_RT)/string.c $(CORE_RT)/syscalls.c $(CORE_RT)/trap.c $(CORE_RT)/shot.c
 PORT_ASM  := $(CORE_RT)/trap_entry.S
 FW_SRC    := $(CORE_FW)/sd.c $(CORE_FW)/diskio.c $(CORE_FW)/flashdisk.c $(CORE_FW)/fatfs/ff.c $(CORE_FW)/fatfs/ffunicode.c
 SRC       := $(QUAKE_SRC) $(PORT_SRC) $(FW_SRC)
@@ -57,13 +63,20 @@ vpath %.S $(CORE_RT)
 # assume that never happens and broke the loops (a bad pointer in
 # Mod_LoadTexinfo).
 CFLAGS += -fno-aggressive-loop-optimizations
+# The FPU is single precision: doubles are software. Unsuffixed constants
+# as floats (they made whole expressions double), and the math functions'
+# float versions (port/m20_math.h).
+QUAKE_FLAGS := -fsingle-precision-constant -include port/m20_math.h
+ifdef PROFILE
+CFLAGS += -DM9B_PROFILE -DPROF_TOP=0   # every bucket, in address order
+endif
 CFLAGS += -MMD -MP
 CFLAGS += $(EXTRA)
 
 all: $(B)/quake.bin
 
 $(B)/%.o: %.c | $(B)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(if $(filter quakegeneric/%,$<),$(QUAKE_FLAGS)) -c $< -o $@
 
 # The string functions must not be turned back into calls to themselves.
 $(B)/string.o: CFLAGS += -fno-tree-loop-distribute-patterns -fno-builtin
@@ -85,6 +98,6 @@ $(B):
 -include $(OBJ:.o=.d)
 
 clean:
-	rm -rf build build-sf
+	rm -rf build build-sf build-prof
 
 .PHONY: all clean
