@@ -29,8 +29,16 @@ viddef_t	vid;				// global video state
 #define	BASEWIDTH	320
 #define	BASEHEIGHT	240
 
+#ifdef M20
+// M20: the span engine writes these in SDRAM, and the CPU drops them from
+// its cache after (port/span_engine.c): they must share no cache line with
+// anything else (64-byte lines; both are whole lines long)
+byte	vid_buffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(64)));
+short	zbuffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(64)));
+#else
 byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
 short	zbuffer[BASEWIDTH*BASEHEIGHT];
+#endif
 byte	*surfcache;
 size_t	surfcache_size;
 

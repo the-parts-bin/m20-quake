@@ -1,5 +1,4 @@
-build/
-build-sf/
+build*/
 # The game data (see data/README.md)
 data/*
 !data/README.md

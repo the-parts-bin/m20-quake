@@ -28,7 +28,10 @@
 #include "quakedef.h"
 #include "d_local.h"
 
-cvar_t r_m20span = {"r_m20span", "1"};   // 0: Quake's own span drawers, 1 the engine, 2 the C model
+#ifndef M20_SPAN_DEFAULT
+#define M20_SPAN_DEFAULT "1"
+#endif
+cvar_t r_m20span = {"r_m20span", M20_SPAN_DEFAULT};   // 0: Quake's own span drawers, 1 the engine, 2 the C model
 
 // The engine's arithmetic (shared with the RTL's test vectors), writing
 // into the frame and z buffers
@@ -92,8 +95,15 @@ static void cache_flush(const void *p, uint32_t n) {
     for (uintptr_t a = (uintptr_t)p & ~(uintptr_t)63; a < (uintptr_t)p + n; a += 64u)
         asm volatile("cbo.flush (%0)" :: "r"(a) : "memory");
 }
+// (Only lines wholly inside the range are dropped: a line shared with
+// other data is written back instead, or that data's unsaved stores would
+// be lost. The frame and z buffers are line-aligned, vid_null.c.)
 static void cache_inval(const void *p, uint32_t n) {
-    for (uintptr_t a = (uintptr_t)p & ~(uintptr_t)63; a < (uintptr_t)p + n; a += 64u)
+    uintptr_t lo = ((uintptr_t)p + 63u) & ~(uintptr_t)63, hi = ((uintptr_t)p + n) & ~(uintptr_t)63;
+    if (lo > hi) lo = hi;
+    if ((uintptr_t)p & 63u) cache_flush(p, 1);
+    if (((uintptr_t)p + n) & 63u) cache_flush((const uint8_t *)p + n - 1, 1);
+    for (uintptr_t a = lo; a < hi; a += 64u)
         asm volatile("cbo.inval (%0)" :: "r"(a) : "memory");
 }
 

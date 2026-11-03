@@ -232,6 +232,11 @@ void CL_NextDemo (void)
 		{
 			Con_Printf ("No demos listed with startdemos\n");
 			cls.demonum = -1;
+#ifdef M20
+			// M20: stop the demo that just ended (and finish a timedemo),
+			// instead of reading on past its end in the pak
+			CL_Disconnect ();
+#endif
 			return;
 		}
 	}

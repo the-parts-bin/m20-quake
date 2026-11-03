@@ -33,18 +33,20 @@ ARCH := -march=rv32im_zba_zicbop_zicsr_zifencei_zicbom -mabi=ilp32
 endif
 
 # Memory: the image from 0x800000, then .bss and the heap (Quake's hunk,
-# M20_MEMSIZE, is one malloc), the stack (64 KB) at the top of the 8 MB.
-MEMSIZE ?= 0x600000
+# M20_MEMSIZE, is one malloc), the stack (128 KB) at the top of the 8 MB.
+MEMSIZE ?= 0x5A0000
+# r_m20span at start-up: 0 Quake's own span drawers, 1 the engine, 2 the C model
+SPAN ?= 1
 
 CFLAGS  := $(ARCH) -O2 -g -specs=picolibc.specs --picolibc-buildtype=release \
            -ffunction-sections -fdata-sections -std=gnu99 \
-           -DM20 -DM20_MEMSIZE=$(MEMSIZE) -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
+           -DM20 -DM20_MEMSIZE=$(MEMSIZE) -DM20_SPAN_DEFAULT=\"$(SPAN)\" -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
            -Iquakegeneric -Iport -I$(CORE_FW) -I$(CORE_FW)/fatfs \
            -Wall -Wno-unused-but-set-variable -Wno-unused-variable -Wno-parentheses \
            -Wno-missing-braces -Wno-dangling-else -Wno-pointer-sign -Wno-trigraphs \
            -Wno-unused-function -Wno-maybe-uninitialized -Wno-implicit-function-declaration
 LDFLAGS := $(ARCH) -specs=picolibc.specs --picolibc-buildtype=release \
-           -Wl,--defsym=__stack_size=0x10000 \
+           -Wl,--defsym=__stack_size=0x20000 \
            -Wl,--gc-sections -Wl,-Map=$(B)/quake.map \
            -T$(CORE_RT)/m9b.ld
 
@@ -75,13 +77,13 @@ CFLAGS += $(EXTRA)
 
 all: $(B)/quake.bin
 
-$(B)/%.o: %.c | $(B)
+$(B)/%.o: %.c Makefile | $(B)
 	$(CC) $(CFLAGS) $(if $(filter quakegeneric/%,$<),$(QUAKE_FLAGS)) -c $< -o $@
 
 # The string functions must not be turned back into calls to themselves.
 $(B)/string.o: CFLAGS += -fno-tree-loop-distribute-patterns -fno-builtin
 
-$(B)/%.o: %.S | $(B)
+$(B)/%.o: %.S Makefile | $(B)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(B)/quake.elf: $(OBJ) $(CORE_RT)/m9b.ld Makefile

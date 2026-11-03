@@ -107,6 +107,7 @@ extern cvar_t r_m20span;    // port/span_engine.c
 void QG_Init(void) {
     Cvar_RegisterVariable(&r_m20span);
     uint8_t *p = malloc(2u * W * H + 64u);
+    if (!p) Sys_Error("QG_Init: no memory for the display buffers");
     uintptr_t base = ((uintptr_t)p + 63u) & ~(uintptr_t)63;
     disp[0] = (uint8_t *)base;
     disp[1] = (uint8_t *)(base + W * H);
