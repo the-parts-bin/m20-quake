@@ -78,9 +78,13 @@ static int32_t exponent(float o, float du, float dv) {
 // integer (fcvt saturates what doesn't fit, which the exponent prevents)
 static int32_t fix(float x, int32_t e) {
     union { uint32_t u; float f; } scale = {(uint32_t)(e + 127) << 23};
+#ifdef __riscv_flen
     int32_t r;
     __asm__("fcvt.w.s %0, %1, rne" : "=r"(r) : "f"(x * scale.f));
     return r;
+#else
+    return (int32_t)lrintf(x * scale.f);   // (make FPU=0)
+#endif
 }
 
 // ---------------------------------------------------------------------

@@ -34,7 +34,7 @@ endif
 ARCH := -march=rv32imf_zba_zicbop_zicsr_zifencei_zicbom_zicboz -mabi=ilp32f
 else
 B    := build-sf
-ARCH := -march=rv32im_zba_zicbop_zicsr_zifencei_zicbom -mabi=ilp32
+ARCH := -march=rv32im_zba_zicbop_zicsr_zifencei_zicbom_zicboz -mabi=ilp32
 endif
 
 # Memory: the image from 0x800000, then .bss and the heap (Quake's hunk,
