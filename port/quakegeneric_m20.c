@@ -1,7 +1,7 @@
 // quakegeneric platform layer for the m20 SoC (../README.md). A first
 // version: enough to see Quake run.
 //
-// Video: RGB565. Quake draws its 320 x 240 frame straight into one of two
+// Video: RGB565. Quake draws its 360 x 240 frame straight into one of two
 // display buffers (vid.buffer: the one not on the screen; the span engine
 // draws the world's surfaces into it, lit per pixel); QG_DrawFrame writes
 // it back from the data cache, points the line table at it (each Quake row
@@ -123,7 +123,7 @@ void QG_Init(void) {
     back = 0;
     vid.buffer = vid.conbuffer = disp[back];
     for (uint32_t y = 0; y < 480u; y++) VRAM_TABLE[y] = LINE_BLANK;
-    VIDEO_HWIN = (40u + 2u * W) << 16 | 40u;
+    VIDEO_HWIN = (360u + W) << 16 | (360u - W);   // centred in the 720 columns
     VIDEO_CTRL = 1;
 }
 

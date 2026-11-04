@@ -26,8 +26,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 viddef_t	vid;				// global video state
 
-#define	BASEWIDTH	320
-#define	BASEHEIGHT	240
+#define	BASEWIDTH	QUAKEGENERIC_RES_X
+#define	BASEHEIGHT	QUAKEGENERIC_RES_Y
 
 #ifdef M20
 // M20: the span engine writes the z buffer in SDRAM, and the CPU drops it
@@ -57,9 +57,16 @@ void	VID_ShiftPalette (unsigned char *palette)
 
 void	VID_Init (unsigned char *palette)
 {
-	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;
-	vid.maxwarpheight = vid.height = vid.conheight = BASEHEIGHT;
+	vid.width = vid.conwidth = BASEWIDTH;
+	vid.height = vid.conheight = BASEHEIGHT;
+	// (r_warpbuffer's size: a larger view is warped from a smaller one)
+	vid.maxwarpwidth = WARP_WIDTH;
+	vid.maxwarpheight = WARP_HEIGHT;
+#ifdef M20
+	vid.aspect = ((float)BASEHEIGHT / BASEWIDTH) * (320.0f / 240.0f);	// 480p is a 4:3 picture
+#else
 	vid.aspect = 1.0;
+#endif
 #ifdef M20
 	vid.numpages = 2;	// (so the status bar and the rest are drawn into both)
 #else
@@ -74,7 +81,12 @@ void	VID_Init (unsigned char *palette)
 	
 	d_pzbuffer = zbuffer;
 
+#ifdef M20
+	// (The span engine lights most surfaces itself, without the cache.)
+	surfcache_size = 512 * 1024;
+#else
 	surfcache_size = D_SurfaceCacheForRes(BASEWIDTH, BASEHEIGHT);
+#endif
 	surfcache = malloc(surfcache_size);
 	D_InitCaches (surfcache, surfcache_size);
 

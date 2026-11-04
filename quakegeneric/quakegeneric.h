@@ -23,7 +23,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakekeys.h"
 
+#ifdef M20
+#define QUAKEGENERIC_RES_X 360   // (doubled: all 720 columns of the 480p output)
+#else
 #define QUAKEGENERIC_RES_X 320
+#endif
 #define QUAKEGENERIC_RES_Y 240
 
 #define QUAKEGENERIC_JOY_MAX_AXES 6
