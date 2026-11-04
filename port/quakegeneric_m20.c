@@ -141,6 +141,11 @@ void QG_DrawFrame(void *pixels) {
 }
 
 void QG_SetPalette(unsigned char palette[768]) {
+    // The status bar's pixels are RGB565, made with the palette of the moment
+    // and only redrawn when it changes: without this it would keep a pickup's
+    // or a hit's tint, a different shade in each display buffer.
+    extern void Sbar_Changed(void);
+    Sbar_Changed();
     for (uint32_t i = 0; i < 256u; i += 2u) {
         const unsigned char *c = &palette[3u * i];
         uint32_t a = (uint32_t)(c[0] >> 3) << 11 | (uint32_t)(c[1] >> 2) << 5 | (c[2] >> 3);

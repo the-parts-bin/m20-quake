@@ -8,7 +8,7 @@ Nano 20K).
 **Status:** early, but it plays: E1M1 at about 9.3 fps (in the start
 area), with keys from the serial terminal only and no sound. It builds
 (`make`; `make FPU=0` for soft float), loads through the core's serial
-loader (`../m20/tools/run.py build/quake.bin`, 2.6 s at 3 Mbaud) and reads
+loader (`../m20/tools/run.py build-pgo/quake.bin`, 2.6 s at 3 Mbaud) and reads
 `QUAKE/id1/pak0.pak` from the disk (`data/README.md`): without an SD card,
 a cut-down shareware pak in the SPI flash (`tools/mkpak.py`, then
 `../m20/tools/mkdisk/mkdisk.sh data/card`).
