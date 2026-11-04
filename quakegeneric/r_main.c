@@ -49,6 +49,7 @@ qboolean	r_surfsonstack;
 int			r_clipflags;
 
 scr_t		*r_warpbuffer;
+float		m20_time;
 
 byte		*r_stack_start;
 
@@ -544,7 +545,7 @@ void R_DrawEntitiesOnList (void)
 
 				for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 				{
-					if (cl_dlights[lnum].die >= cl.time)
+					if (cl_dlights[lnum].die >= m20_time)
 					{
 						VectorSubtract (currententity->origin,
 										cl_dlights[lnum].origin,
@@ -766,7 +767,7 @@ void R_DrawBEntitiesOnList (void)
 				{
 					for (k=0 ; k<MAX_DLIGHTS ; k++)
 					{
-						if ((cl_dlights[k].die < cl.time) ||
+						if ((cl_dlights[k].die < m20_time) ||
 							(!cl_dlights[k].radius))
 						{
 							continue;
@@ -1055,6 +1056,7 @@ void R_RenderView (void)
 	if ( (intptr_t)(&r_warpbuffer) & 3 )
 		Sys_Error ("Globals are missaligned");
 
+	m20_time = cl.time;	// M20: a float copy for the per-surface, per-particle tests
 	M20_PERF_BEGIN (M20_PERF_VIEW);
 	R_RenderView_ ();
 	M20_PERF_END (M20_PERF_VIEW);

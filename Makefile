@@ -8,6 +8,7 @@
 #   make PERF=1    per-region CPU counters (build-perf/), printed at the
 #                  timedemo's end (port/m20_perf.h; a CPU with
 #                  --performance-counters 4)
+#   make PGO=gen, PGO=use  a profile-guided build (build-pgo/, below)
 #   make PROFILE=1 the PC-sampling profiler (build-prof/): Ctrl-P on the
 #                  UART (../m20/tools/m9bctl.py prof) prints it
 
@@ -43,14 +44,14 @@ MEMSIZE ?= 0x5A0000
 # r_m20span at start-up: 0 Quake's own span drawers, 1 the engine, 2 the C model
 SPAN ?= 1
 
-CFLAGS  := $(ARCH) -O2 -g -specs=picolibc.specs --picolibc-buildtype=release \
+CFLAGS  := $(ARCH) -O2 -flto -g -specs=picolibc.specs --picolibc-buildtype=release \
            -ffunction-sections -fdata-sections -std=gnu99 \
            -DM20 -DM20_MEMSIZE=$(MEMSIZE) -DM20_SPAN_DEFAULT=\"$(SPAN)\" -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
            -Iquakegeneric -Iport -I$(CORE_FW) -I$(CORE_FW)/fatfs \
            -Wall -Wno-unused-but-set-variable -Wno-unused-variable -Wno-parentheses \
            -Wno-missing-braces -Wno-dangling-else -Wno-pointer-sign -Wno-trigraphs \
            -Wno-unused-function -Wno-maybe-uninitialized -Wno-implicit-function-declaration
-LDFLAGS := $(ARCH) -specs=picolibc.specs --picolibc-buildtype=release \
+LDFLAGS := $(ARCH) -O2 -flto -specs=picolibc.specs --picolibc-buildtype=release \
            -Wl,--defsym=__stack_size=0x20000 \
            -Wl,--gc-sections -Wl,-Map=$(B)/quake.map \
            -T$(CORE_RT)/m9b.ld
@@ -83,8 +84,23 @@ endif
 ifdef PERF
 CFLAGS += -DM20_PERF   # per-region CPU counters, printed at the timedemo's end (port/m20_perf.h)
 endif
+# Profile-guided: PGO=gen, a timedemo's counters into build-pgo/*.gcda
+# (port/m20_pgo.c), then PGO=use. Both build in build-pgo/, where the
+# .gcda files belong: remove its .o files between them.
+ifeq ($(PGO),gen)
+B := build-pgo
+PGO_FLAGS := -fprofile-arcs -fprofile-info-section=gcov_info -fprofile-update=single
+CFLAGS += -DM20_PGO_GEN $(PGO_FLAGS)
+LDFLAGS += $(PGO_FLAGS)
+else ifeq ($(PGO),use)
+B := build-pgo
+PGO_FLAGS := -fprofile-use -fprofile-correction -Wno-missing-profile -Wno-coverage-mismatch
+CFLAGS += $(PGO_FLAGS)
+LDFLAGS += $(PGO_FLAGS)
+endif
 CFLAGS += -MMD -MP
 CFLAGS += $(EXTRA)
+LDFLAGS += $(EXTRA)
 
 all: $(B)/quake.bin
 
@@ -92,7 +108,7 @@ $(B)/%.o: %.c Makefile | $(B)
 	$(CC) $(CFLAGS) $(if $(filter quakegeneric/%,$<),$(QUAKE_FLAGS)) -c $< -o $@
 
 # The string functions must not be turned back into calls to themselves.
-$(B)/string.o: CFLAGS += -fno-tree-loop-distribute-patterns -fno-builtin
+$(B)/string.o: CFLAGS += -fno-tree-loop-distribute-patterns -fno-builtin -fno-lto
 
 $(B)/%.o: %.S Makefile | $(B)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -117,6 +133,6 @@ $(B)/quakegeneric_m20.o $(B)/span_engine.o: $(B)/args.stamp
 -include $(OBJ:.o=.d)
 
 clean:
-	rm -rf build build-sf build-prof build-perf
+	rm -rf build build-sf build-prof build-perf build-pgo
 
 .PHONY: all clean FORCE

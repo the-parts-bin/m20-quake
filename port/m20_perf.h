@@ -30,7 +30,12 @@ void M20_PerfReport(void);
 #define M20_PERF_BEGIN(r) ((void)0)
 #define M20_PERF_END(r)   ((void)0)
 #define M20_PerfReset()   ((void)0)
+#ifdef M20_PGO_GEN
+void M20_PgoDump(void);     // make PGO=gen: the branch counters (m20_pgo.c)
+#define M20_PerfReport()  M20_PgoDump()
+#else
 #define M20_PerfReport()  ((void)0)
+#endif
 #endif
 
 #endif

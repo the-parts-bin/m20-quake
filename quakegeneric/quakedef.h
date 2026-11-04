@@ -46,7 +46,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define UNUSED(x)	(x = x)	// for pesky compiler / lint warnings
 
+#ifndef MINIMUM_MEMORY	// (M20: make PGO=gen has less, its image is larger)
 #define	MINIMUM_MEMORY			0x550000
+#endif
 #define	MINIMUM_MEMORY_LEVELPAK	(MINIMUM_MEMORY + 0x100000)
 
 #define MAX_NUM_ARGVS	50
@@ -305,4 +307,5 @@ void Chase_Update (void);
 
 #ifdef M20
 #include "m20_perf.h"   // M20: per-region CPU counters (make PERF=1)
+extern float m20_time;   // M20: cl.time as a float, once a frame (r_main.c)
 #endif

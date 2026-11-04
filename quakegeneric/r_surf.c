@@ -207,7 +207,7 @@ texture_t *R_TextureAnimation (texture_t *base)
 	if (!base->anim_total)
 		return base;
 
-	reletive = (int)(cl.time*10) % base->anim_total;
+	reletive = (int)(m20_time*10) % base->anim_total;
 
 	count = 0;	
 	while (base->anim_min > reletive || base->anim_max <= reletive)
@@ -636,7 +636,7 @@ void R_GenTurbTile (pixel_t *pbasetex, void *pdest)
 	int		i, j, s, t;
 	byte	*pd;
 	
-	turb = sintable + ((int)(cl.time*SPEED)&(CYCLE-1));
+	turb = sintable + ((int)(m20_time*SPEED)&(CYCLE-1));
 	pd = (byte *)pdest;
 
 	for (i=0 ; i<TILE_SIZE ; i++)

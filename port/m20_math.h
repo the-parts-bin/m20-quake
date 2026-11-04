@@ -13,8 +13,17 @@
 #define atan(x)     atanf(x)
 #define atan2(y, x) atan2f(y, x)
 #define sqrt(x)     sqrtf(x)
-#define floor(x)    floorf(x)
-#define ceil(x)     ceilf(x)
+// (Inline: Quake's values all fit an int. The conversion truncates toward 0.)
+static inline float m20_floorf(float x) {
+    float f = (float)(int)x;
+    return f > x ? f - 1.0f : f;
+}
+static inline float m20_ceilf(float x) {
+    float f = (float)(int)x;
+    return f < x ? f + 1.0f : f;
+}
+#define floor(x)    m20_floorf(x)
+#define ceil(x)     m20_ceilf(x)
 #define fabs(x)     fabsf(x)
 #define pow(x, y)   powf(x, y)
 

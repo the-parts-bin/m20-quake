@@ -72,7 +72,7 @@ void D_WarpScreen (void)
 				(int)((float)u * wratio * w / (w + AMP2 * 2));
 	}
 
-	turb = intsintable + ((int)(cl.time*SPEED)&(CYCLE-1));
+	turb = intsintable + ((int)(m20_time*SPEED)&(CYCLE-1));
 	dest = vid.buffer + scr_vrect.y * vid.rowbytes + scr_vrect.x;
 
 	for (v=0 ; v<scr_vrect.height ; v++, dest += vid.rowbytes)
@@ -121,7 +121,7 @@ void Turbulent8 (espan_t *pspan)
 	float			sdivz, tdivz, zi, z, du, dv, spancountminus1;
 	float			sdivz16stepu, tdivz16stepu, zi16stepu;
 	
-	r_turb_turb = sintable + ((int)(cl.time*SPEED)&(CYCLE-1));
+	r_turb_turb = sintable + ((int)(m20_time*SPEED)&(CYCLE-1));
 
 	r_turb_sstep = 0;	// keep compiler happy
 	r_turb_tstep = 0;	// ditto

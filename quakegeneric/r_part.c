@@ -629,7 +629,7 @@ void R_DrawParticles (void)
 	for ( ;; ) 
 	{
 		kill = active_particles;
-		if (kill && kill->die < cl.time)
+		if (kill && kill->die < m20_time)
 		{
 			active_particles = kill->next;
 			kill->next = free_particles;
@@ -644,7 +644,7 @@ void R_DrawParticles (void)
 		for ( ;; )
 		{
 			kill = p->next;
-			if (kill && kill->die < cl.time)
+			if (kill && kill->die < m20_time)
 			{
 				p->next = kill->next;
 				kill->next = free_particles;
