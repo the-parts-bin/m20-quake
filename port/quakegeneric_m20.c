@@ -14,7 +14,8 @@
 // Tab, Backspace, space (jump), f (fire: Ctrl), other characters as
 // themselves (Quake's default.cfg binds ',' and '.' to strafing, ` to the
 // console). A terminal only sends presses, so a key counts as held until
-// 150 ms after its last repeat. (USB keyboard and mouse: to do.)
+// 150 ms after its last repeat. USB keyboards and mice on either of the
+// two USB ports too (usb_poll()).
 //
 // Time: CLOCK_CNT (the CPU clock, 54 MHz) extended to 64 bits.
 //
@@ -86,10 +87,6 @@ void vblank_flip(void) {
     }
 #endif
 }
-void sound_irq(uint32_t pending) {
-    (void)pending;
-}
-
 void M20_Halt(void) {
     for (;;) {
     }
@@ -165,11 +162,11 @@ void QG_SetPalette(unsigned char palette[768]) {
 static int held_key = -1;
 static uint32_t held_since;
 static int esc_state;   // 0, 1 after ESC, 2 after ESC [
-static int queue[16];
+static int queue[64];
 static int q_head, q_tail;
 
 static void push(int down, int key) {
-    int next = (q_tail + 1) & 15;
+    int next = (q_tail + 1) & 63;
     if (next == q_head) return;
     queue[q_tail] = down ? key : -1 - key;
     q_tail = next;
@@ -233,11 +230,121 @@ static void uart_poll(void) {
     }
 }
 
+// ---------------------------------------------------------------------
+// USB keyboards and mice (../m20/rtl/usb_port.v), polled: a keyboard's
+// report lists the keys held (HID usage codes, up to four here) and its
+// modifiers, so the changes from the last report are the key events; a
+// mouse's motion comes from MOUSE_POS, the hardware's running sums.
+// ---------------------------------------------------------------------
+#define USB_REG(p, o)    (*(volatile uint32_t *)(M9B_USB + 0x20u * (p) + (o)))
+#define USB_STATUS(p)    USB_REG(p, 0x00u)   // bits 1:0 type, 15:8 report count
+#define USB_KEYS(p)      USB_REG(p, 0x04u)   // {k3, k2, k1, modifiers}
+#define USB_KEYS2(p)     USB_REG(p, 0x08u)   // k4
+#define USB_MOUSE(p)     USB_REG(p, 0x0Cu)   // {dy, dx, buttons}
+#define USB_MOUSE_POS(p) USB_REG(p, 0x14u)   // {y, x}, 16-bit running sums
+
+// HID usage codes to Quake's keys
+static int hid_key(uint32_t k) {
+    static const char row[] = "\r\0\0\0 -=[]\\\0;'`,./";   // 0x28..0x38
+    if (k >= 0x04u && k <= 0x1Du) return 'a' + (int)k - 0x04;
+    if (k >= 0x1Eu && k <= 0x26u) return '1' + (int)k - 0x1E;
+    if (k == 0x27u) return '0';
+    if (k >= 0x3Au && k <= 0x45u) return K_F1 + (int)k - 0x3A;
+    switch (k) {
+    case 0x28u: return K_ENTER;
+    case 0x29u: return K_ESCAPE;
+    case 0x2Au: return K_BACKSPACE;
+    case 0x2Bu: return K_TAB;
+    case 0x48u: return K_PAUSE;
+    case 0x49u: return K_INS;
+    case 0x4Au: return K_HOME;
+    case 0x4Bu: return K_PGUP;
+    case 0x4Cu: return K_DEL;
+    case 0x4Du: return K_END;
+    case 0x4Eu: return K_PGDN;
+    case 0x4Fu: return K_RIGHTARROW;
+    case 0x50u: return K_LEFTARROW;
+    case 0x51u: return K_DOWNARROW;
+    case 0x52u: return K_UPARROW;
+    default: break;
+    }
+    return k >= 0x2Cu && k <= 0x38u ? row[k - 0x28u] : 0;
+}
+
+static const struct { uint8_t mask; int key; } hid_mods[3] = {
+    {0x11u, K_CTRL}, {0x22u, K_SHIFT}, {0x44u, K_ALT},   // left and right
+};
+
+static struct {
+    uint32_t type, count;
+    uint8_t keys[4], mods;
+    uint32_t pos;       // mouse: MOUSE_POS at the last look
+    uint8_t buttons;
+} usb[2];
+
+static int key_in(uint8_t k, const uint8_t *keys) {
+    return k == keys[0] || k == keys[1] || k == keys[2] || k == keys[3];
+}
+
+static void usb_keys(int p, const uint8_t *keys, uint8_t mods) {
+    for (int i = 0; i < 3; i++) {
+        int was = (usb[p].mods & hid_mods[i].mask) != 0, is = (mods & hid_mods[i].mask) != 0;
+        if (was != is) push(is, hid_mods[i].key);
+    }
+    for (int i = 0; i < 4; i++) {
+        uint8_t k = usb[p].keys[i];
+        if (k && !key_in(k, keys) && hid_key(k)) push(0, hid_key(k));
+    }
+    for (int i = 0; i < 4; i++) {
+        uint8_t k = keys[i];
+        if (k && !key_in(k, usb[p].keys) && hid_key(k)) push(1, hid_key(k));
+    }
+    memcpy(usb[p].keys, keys, 4);
+    usb[p].mods = mods;
+}
+
+static void usb_buttons(int p, uint8_t b) {
+    for (int i = 0; i < 3; i++)
+        if ((usb[p].buttons ^ b) >> i & 1u) push(b >> i & 1u, K_MOUSE1 + i);
+    usb[p].buttons = b;
+}
+
+static void usb_poll(void) {
+    static const uint8_t none[4];
+    for (int p = 0; p < 2; p++) {
+        uint32_t st = USB_STATUS(p), type = st & 3u, count = st >> 8 & 0xFFu;
+        if (type != usb[p].type) {   // unplugged or replaced: release everything
+            usb_keys(p, none, 0);
+            usb_buttons(p, 0);
+            usb[p].pos = USB_MOUSE_POS(p);
+            usb[p].type = type;
+            usb[p].count = count;
+            printf("usb %d: %s\n", p, type == 1u ? "keyboard" : type == 2u ? "mouse" :
+                                      type == 3u ? "gamepad" : "nothing");
+            if (type == 2u) Cbuf_AddText("+mlook\n");   // the mouse looks around
+            continue;
+        }
+        if (count == usb[p].count) continue;
+        usb[p].count = count;
+        if (type == 1u) {
+            uint32_t k = USB_KEYS(p);
+            uint8_t keys[4] = {(uint8_t)(k >> 8), (uint8_t)(k >> 16), (uint8_t)(k >> 24),
+                               (uint8_t)USB_KEYS2(p)};
+            usb_keys(p, keys, (uint8_t)k);
+        } else if (type == 2u) {
+            usb_buttons(p, (uint8_t)(USB_MOUSE(p) & 7u));
+        }
+    }
+}
+
 int QG_GetKey(int *down, int *key) {
-    if (q_head == q_tail) uart_poll();
+    if (q_head == q_tail) {
+        uart_poll();
+        usb_poll();
+    }
     if (q_head == q_tail) return 0;
     int e = queue[q_head];
-    q_head = (q_head + 1) & 15;
+    q_head = (q_head + 1) & 63;
     *down = e >= 0;
     *key = e >= 0 ? e : -1 - e;
     return 1;
@@ -246,6 +353,13 @@ int QG_GetKey(int *down, int *key) {
 void QG_GetMouseMove(int *x, int *y) {
     *x = 0;
     *y = 0;
+    for (int p = 0; p < 2; p++) {
+        if (usb[p].type != 2u) continue;
+        uint32_t pos = USB_MOUSE_POS(p);
+        *x += (int16_t)(pos - usb[p].pos);
+        *y += (int16_t)((pos >> 16) - (usb[p].pos >> 16));
+        usb[p].pos = pos;
+    }
 }
 
 void QG_GetJoyAxes(float *axes) {
