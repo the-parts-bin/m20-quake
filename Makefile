@@ -75,9 +75,6 @@ vpath %.S $(CORE_RT)
 # assume that never happens and broke the loops (a bad pointer in
 # Mod_LoadTexinfo).
 CFLAGS += -fno-aggressive-loop-optimizations
-# And it casts between pointer types freely. GCC's type-based alias analysis
-# broke that under PGO=use: edges' surface indices went bad in R_GenerateSpans.
-CFLAGS += -fno-strict-aliasing
 # The FPU is single precision: doubles are software. Unsuffixed constants
 # as floats (they made whole expressions double), and the math functions'
 # float versions (port/m20_math.h).

@@ -39,7 +39,121 @@ static uint32_t ref_mul(uint32_t a, uint32_t b) {
     return pack(s, e, m, 23, 0);
 }
 
+// R_EmitEdge's surface index, as compiled: three crashes had it not shifted
+// down, as though the slli read a5 from before the srai, with an fsw between.
+static uint32_t hazard(volatile uint32_t *v, uint32_t *edge, int div) {
+    uint32_t a, b;
+    float one = 1.0f, x = 3.0f;
+    if (div)
+        asm volatile(
+            "fdiv.s %[x],%[one],%[x]\n"
+            "lw %[a],0(%[v])\n lw %[b],4(%[v])\n"
+            "sub %[a],%[a],%[b]\n srai %[a],%[a],6\n addi %[b],%[e],32\n"
+            "fsw %[x],24(%[e])\n slli %[a],%[a],16\n srli %[a],%[a],16\n"
+            : [a]"=&r"(a), [b]"=&r"(b), [x]"+f"(x) : [v]"r"(v), [e]"r"(edge), [one]"f"(one) : "memory");
+    else
+        asm volatile(
+            "lw %[a],0(%[v])\n lw %[b],4(%[v])\n"
+            "sub %[a],%[a],%[b]\n srai %[a],%[a],6\n addi %[b],%[e],32\n"
+            "fsw %[x],24(%[e])\n slli %[a],%[a],16\n srli %[a],%[a],16\n"
+            : [a]"=&r"(a), [b]"=&r"(b) : [v]"r"(v), [e]"r"(edge), [x]"f"(x) : "memory");
+    return a;
+}
+
+#define area ((uint32_t *)0xC00000u)   // 1 MB of the idle hunk: stores that miss the cache
+
+static void hazard_test(void) {
+    static volatile uint32_t v[2];
+    uint32_t bad[2] = {0, 0}, told = 0;
+    for (uint32_t i = 1; i <= 3000000u; i++) {
+        int div = i & 1;
+        uint32_t idx = rnd() & 0x3FFu;
+        v[0] = 0xFE0000u + idx * 64u;
+        v[1] = 0xFE0000u;
+        uint32_t *e = &area[(rnd() & 0x3FFFFu) & ~7u];
+        if (e > &area[(1u << 18) - 32]) e = area;
+        uint32_t r = hazard(v, e, div);
+        if (r != idx) {
+            bad[div]++;
+            if (told++ < 8) printf("[hazard div %d: %lx, not %lx]\n", div, (unsigned long)r, (unsigned long)idx);
+        }
+        if (i % 1000000u == 0) printf("hazard: %lu runs, %lu bad plain, %lu bad after fdiv\n", (unsigned long)i, (unsigned long)bad[0], (unsigned long)bad[1]);
+    }
+}
+
+// Nothing but shifts and adds in a loop, so that the interrupts land between
+// them: each round must end with its input.
+static void tight_test(void) {
+    uint32_t bad = 0, told = 0;
+    for (uint32_t round = 1; round <= 40u; round++) {
+        uint32_t n = 4000000u, errs = 0, last = 0;
+        uint32_t x = 0x3380u;
+        asm volatile(
+            "1:\n"
+            "li t0,0xCE\n"
+            "slli t1,t0,6\n"
+            "srai t1,t1,6\n"
+            "addi t2,t0,32\n"
+            "slli t3,t1,16\n"
+            "srli t3,t3,16\n"
+            "beq t3,t0,2f\n"
+            "addi %[e],%[e],1\n"
+            "mv %[l],t3\n"
+            "2:\n"
+            "addi %[n],%[n],-1\n"
+            "bnez %[n],1b\n"
+            : [n]"+r"(n), [e]"+r"(errs), [l]"+r"(last) : : "t0", "t1", "t2", "t3");
+        bad += errs;
+        if (errs && told++ < 8) printf("[tight: %lu wrong, last %lx]\n", (unsigned long)errs, (unsigned long)last);
+        if (round % 10u == 0) printf("tight: %lu million loops, %lu wrong\n", (unsigned long)round * 4u, (unsigned long)bad);
+    }
+}
+
+// Halfword stores to one word back to back, as in R_EmitEdge (sh a3,18(a1);
+// sh zero,16(a1)), then read back. variant 0: nothing before; 1: fsw and sw to
+// the same line first, as the game does; 2: the stores the other way round;
+// 3: bytes.
+static void store_test(void) {
+    uint32_t bad[4] = {0, 0, 0, 0}, told = 0;
+    float x = 1.5f;
+    for (uint32_t i = 1; i <= 6000000u; i++) {
+        uint32_t var = i & 3u, val = (rnd() & 0xFFFFu) | 1u, want, got;
+        uint32_t *e = &area[(rnd() & 0x3FFFFu) & ~7u];
+        if (e > &area[(1u << 18) - 32]) e = area;
+        uint32_t *w = e + 4;
+        *w = 0xDEADBEEFu;
+        if (i & 4u) asm volatile("cbo.flush (%0)" :: "r"(e) : "memory");   // half of them miss
+        switch (var) {
+        case 0:
+            asm volatile("sh %1,18(%0)\n sh zero,16(%0)\n" :: "r"(e), "r"(val) : "memory");
+            want = val << 16;
+            break;
+        case 1:
+            asm volatile("fsw %2,24(%0)\n sw %1,28(%0)\n sh %1,18(%0)\n sh zero,16(%0)\n" :: "r"(e), "r"(val), "f"(x) : "memory");
+            want = val << 16;
+            break;
+        case 2:
+            asm volatile("sh %1,16(%0)\n sh zero,18(%0)\n" :: "r"(e), "r"(val) : "memory");
+            want = val;
+            break;
+        default:
+            asm volatile("sb %1,16(%0)\n sb zero,17(%0)\n sb %1,18(%0)\n sb zero,19(%0)\n" :: "r"(e), "r"(val) : "memory");
+            want = (val & 255u) | (val & 255u) << 16;
+            break;
+        }
+        got = *(volatile uint32_t *)w;
+        if (got != want) {
+            bad[var]++;
+            if (told++ < 10) printf("[store %lu: %08lx, not %08lx]\n", (unsigned long)var, (unsigned long)got, (unsigned long)want);
+        }
+        if (i % 2000000u == 0) printf("store: %lu runs, bad %lu %lu %lu %lu\n", (unsigned long)i, (unsigned long)bad[0], (unsigned long)bad[1], (unsigned long)bad[2], (unsigned long)bad[3]);
+    }
+}
+
 void M20_FpuTest(void) {
+    store_test();
+    tight_test();
+    hazard_test();
     uint32_t ops = 0, bad_div = 0, bad_mul = 0, told = 0, t0 = 0;
     printf("fpu test\n");
     for (;;) {
