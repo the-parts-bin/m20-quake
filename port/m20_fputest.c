@@ -150,7 +150,55 @@ static void store_test(void) {
     }
 }
 
+// The game data, read twice: a sum for each megabyte, to compare with the
+// host's copy and between the passes.
+static void file_test(void) {
+    static uint8_t buf[65536] __attribute__((aligned(64)));
+    for (int pass = 0; pass < 2; pass++) {
+        FILE *f = fopen("QUAKE/id1/pak0.pak", "r");
+        if (!f) { printf("no pak\n"); return; }
+        uint32_t sum = 0, block = 0, k = 0;
+        size_t n;
+        while ((n = fread(buf, 1, sizeof buf, f)) > 0) {
+            for (size_t i = 0; i + 4 <= n; i += 4) {
+                uint32_t w; memcpy(&w, buf + i, 4);
+                sum = (sum << 1 | sum >> 31) ^ w;
+            }
+            if (++k == 16u) { printf("sum %d %lu %08lx\n", pass, (unsigned long)block++, (unsigned long)sum); sum = 0; k = 0; }
+        }
+        if (k) printf("sum %d %lu %08lx\n", pass, (unsigned long)block, (unsigned long)sum);
+        fclose(f);
+    }
+}
+
+// 4 MB of the idle hunk, far more than the caches: written with stores, with
+// memset and with memcpy, each read back.
+static void mem_test(void) {
+    uint32_t *m = (uint32_t *)0xA00000u;
+    const uint32_t n = (4u << 20) / 4u;
+    for (uint32_t pass = 0; pass < 3; pass++) {
+        uint32_t bad = 0, told = 0;
+        for (uint32_t i = 0; i < n; i++) m[i] = (i + pass) * 2654435761u;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t w = (i + pass) * 2654435761u;
+            if (m[i] != w) { bad++; if (told++ < 4) printf("[mem %p: %08lx, not %08lx]\n", &m[i], (unsigned long)m[i], (unsigned long)w); }
+        }
+        printf("stores pass %lu: %lu bad\n", (unsigned long)pass, (unsigned long)bad);
+        bad = 0; told = 0;
+        memset(m, 0, 4u << 20);
+        for (uint32_t i = 0; i < n; i++) if (m[i]) { bad++; if (told++ < 4) printf("[zero %p: %08lx]\n", &m[i], (unsigned long)m[i]); }
+        printf("memset 0 pass %lu: %lu bad\n", (unsigned long)pass, (unsigned long)bad);
+        bad = 0; told = 0;
+        for (uint32_t i = 0; i < n / 2; i++) m[i] = i * 40503u + pass;
+        memcpy(m + n / 2, m, 2u << 20);
+        for (uint32_t i = 0; i < n / 2; i++) if (m[n / 2 + i] != i * 40503u + pass) { bad++; if (told++ < 4) printf("[copy %p: %08lx]\n", &m[n / 2 + i], (unsigned long)m[n / 2 + i]); }
+        printf("memcpy pass %lu: %lu bad\n", (unsigned long)pass, (unsigned long)bad);
+    }
+}
+
 void M20_FpuTest(void) {
+    mem_test();
+    file_test();
     store_test();
     tight_test();
     hazard_test();
