@@ -71,6 +71,7 @@ static int32_t exponent(float o, float du, float dv) {
     union { float f; uint32_t u; } b = {m};
     int32_t e = 30 - ((int32_t)(b.u >> 23) - 126);   // m < 2^(exponent - 126), as frexpf (m is normal)
     if (e > 60) e = 60;
+    if (e < 0) e = 0;   // (the engine's exponent is 6 bits, unsigned; origin() wraps)
     return e;
 }
 
@@ -85,6 +86,17 @@ static int32_t fix(float x, int32_t e) {
 #else
     return (int32_t)lrintf(x * scale.f);   // (make FPU=0)
 #endif
+}
+
+// A linear function's value at the screen's corner, which the engine starts
+// from, scaled by 2^e. On a steep surface it can be far beyond what the visible
+// pixels reach, the more so on a wider screen: it would saturate. So it's taken
+// at the centre, and stepped back in wrapping integers, as the engine's adders
+// work: what's right modulo 2^32 is right on screen.
+static int32_t origin(float o, float du, float dv, int32_t iu, int32_t iv, int32_t e) {
+    int32_t cu = vid.width / 2, cv = vid.height / 2;
+    return (int32_t)((uint32_t)fix(o + (float)cu * du + (float)cv * dv, e)
+                     - (uint32_t)cu * (uint32_t)iu - (uint32_t)cv * (uint32_t)iv);
 }
 
 // ---------------------------------------------------------------------
@@ -221,22 +233,15 @@ static void set_regs(void) {
     }
     eng.es = exponent(d_sdivzorigin, d_sdivzstepu, d_sdivzstepv);
     eng.et = exponent(d_tdivzorigin, d_tdivzstepu, d_tdivzstepv);
-    eng.s0 = fix(d_sdivzorigin, eng.es);
     eng.su = fix(d_sdivzstepu, eng.es);
     eng.sv = fix(d_sdivzstepv, eng.es);
-    eng.t0 = fix(d_tdivzorigin, eng.et);
+    eng.s0 = origin(d_sdivzorigin, d_sdivzstepu, d_sdivzstepv, eng.su, eng.sv, eng.es);
     eng.tu = fix(d_tdivzstepu, eng.et);
     eng.tv = fix(d_tdivzstepv, eng.et);
-    // (1/z at the screen's corner can be far past 1 on a steep surface, more so on
-    // a wider screen, and the conversion would saturate. So from the centre, back
-    // to the corner in wrapping integers, as the engine's adders work.)
+    eng.t0 = origin(d_tdivzorigin, d_tdivzstepu, d_tdivzstepv, eng.tu, eng.tv, eng.et);
     eng.zu = fix(d_zistepu, 31);
     eng.zv = fix(d_zistepv, 31);
-    {
-        int32_t cu = vid.width / 2, cv = vid.height / 2;
-        eng.z0 = (int32_t)((uint32_t)fix(d_ziorigin + (float)cu * d_zistepu + (float)cv * d_zistepv, 31)
-                           - (uint32_t)cu * (uint32_t)eng.zu - (uint32_t)cv * (uint32_t)eng.zv);
-    }
+    eng.z0 = origin(d_ziorigin, d_zistepu, d_zistepv, eng.zu, eng.zv, 31);
     eng.sadj = sadjust;
     eng.tadj = tadjust;
     eng.smax = bbextents;
