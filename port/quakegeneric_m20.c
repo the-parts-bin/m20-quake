@@ -445,7 +445,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
     printf("\n");
 #ifdef M20_FPUTEST
-    { extern void M20_RegTest(void); M20_RegTest(); }
+    { extern void M20_RegTest(void), M20_AluTest(void), M20_SdramTest(void), M20_CollideTest(void), M20_FetchTest(void), M20_FetchFpuTest(void); M20_FetchFpuTest(); M20_FetchTest(); M20_CollideTest(); M20_AluTest(); M20_RegTest(); }
 #endif
     QG_Create(nargs, args);
 #ifdef M20_FPUTEST

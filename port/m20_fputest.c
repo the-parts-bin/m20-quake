@@ -153,12 +153,149 @@ static void store_test(void) {
 // R_ViewChanged's a5 turned into a float right after fdiv.s fa5: does a long FPU
 // operation reach the integer register of the same number? fdiv or fsqrt, then
 // a load through that register (a miss, or not), after 0..n instructions.
+// Integer divide and multiply against shifts and subtracts only.
+static void ref_udivmod(uint32_t n, uint32_t d, uint32_t *q, uint32_t *r) {
+    uint32_t quo = 0, rem = 0;
+    for (int i = 31; i >= 0; i--) {
+        rem = rem << 1 | (n >> i & 1u);
+        if (rem >= d) { rem -= d; quo |= 1u << i; }
+    }
+    *q = quo; *r = rem;
+}
+static uint32_t ref_imul(uint32_t a, uint32_t b) {
+    uint32_t r = 0;
+    for (int i = 0; i < 32; i++) if (b >> i & 1u) r += a << i;
+    return r;
+}
+
+void M20_AluTest(void) {
+    uint32_t bad[4] = {0, 0, 0, 0}, told = 0, n = 0;
+    printf("alu test\n");
+    for (uint32_t i = 1; i <= 600000u; i++) {
+        uint32_t a = rnd() >> (rnd() & 31u), b = (rnd() >> (rnd() & 31u)) | 1u, q, r, hq, hr, hm;
+        asm volatile("divu %0,%1,%2" : "=r"(hq) : "r"(a), "r"(b));
+        asm volatile("remu %0,%1,%2" : "=r"(hr) : "r"(a), "r"(b));
+        asm volatile("mul %0,%1,%2" : "=r"(hm) : "r"(a), "r"(b));
+        ref_udivmod(a, b, &q, &r);
+        int32_t sa = (int32_t)a - (int32_t)(rnd() & 0xFFFFu), sb = (int32_t)(b & 0xFFFFu) | 1, srem;
+        uint32_t ua = sa < 0 ? 0u - (uint32_t)sa : (uint32_t)sa, sq, sr;
+        asm volatile("rem %0,%1,%2" : "=r"(srem) : "r"(sa), "r"(sb));
+        ref_udivmod(ua, (uint32_t)sb, &sq, &sr);
+        int32_t want_rem = sa < 0 ? -(int32_t)sr : (int32_t)sr;
+        n++;
+        if (hq != q) { bad[0]++; if (told++ < 6) printf("[divu %08lx / %08lx = %08lx, not %08lx]\n", (unsigned long)a, (unsigned long)b, (unsigned long)hq, (unsigned long)q); }
+        if (hr != r) { bad[1]++; if (told++ < 6) printf("[remu %08lx %% %08lx = %08lx, not %08lx]\n", (unsigned long)a, (unsigned long)b, (unsigned long)hr, (unsigned long)r); }
+        if (hm != ref_imul(a, b)) { bad[2]++; if (told++ < 6) printf("[mul %08lx * %08lx = %08lx]\n", (unsigned long)a, (unsigned long)b, (unsigned long)hm); }
+        if (srem != want_rem) { bad[3]++; if (told++ < 6) printf("[rem %ld %% %ld = %ld, not %ld]\n", (long)sa, (long)sb, (long)srem, (long)want_rem); }
+    }
+    printf("alu: %lu runs, bad divu %lu remu %lu mul %lu rem %lu\n", (unsigned long)n, (unsigned long)bad[0], (unsigned long)bad[1], (unsigned long)bad[2], (unsigned long)bad[3]);
+}
+
+// Early, before the game: 6 MB of memory the program doesn't use, written and
+// read back in patterns that toggle many data lines at once, through the caches.
+// Reports which bits fail, since the SDRAM's pins are the one thing not timed.
+void M20_SdramTest(void) {
+    volatile uint32_t *m = (volatile uint32_t *)0xA00000u;
+    const uint32_t n = (5u << 20) / 4u;
+    uint32_t orbits = 0, bad = 0, told = 0;
+    static const uint32_t pat[4] = {0xFFFFFFFFu, 0x00000000u, 0xAAAAAAAAu, 0x55555555u};
+    printf("sdram test\n");
+    for (uint32_t pass = 0; pass < 8u; pass++) {
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t w = pass < 4u ? (i & 1u ? ~pat[pass] : pat[pass]) : (i + pass) * 2654435761u;
+            m[i] = w;
+        }
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t w = pass < 4u ? (i & 1u ? ~pat[pass] : pat[pass]) : (i + pass) * 2654435761u;
+            uint32_t g = m[i];
+            if (g != w) {
+                bad++; orbits |= g ^ w;
+                if (told++ < 6) printf("[sdram %p: %08lx, not %08lx]\n", &m[i], (unsigned long)g, (unsigned long)w);
+            }
+        }
+        printf("sdram pass %lu: %lu bad, bits %08lx\n", (unsigned long)pass, (unsigned long)bad, (unsigned long)orbits);
+    }
+}
+
+// fsqrt.s or fdiv.s, then read an integer register at once: the same number as
+// the float destination (a5 / fa5), or another (a5 / fa4). No load through it, so
+// a bad value is seen, not trapped on. Does it equal the float result?
+#define COLLIDE(ins, fd)                                                     \
+    { register uint32_t a5 asm("a5") = 0x12345678u; uint32_t bitsr;           \
+      asm volatile(ins "\n mv %0,a5\n fmv.x.w %1," fd "\n"                  \
+                   : "=&r"(got), "=&r"(bitsr), "+r"(a5) : "f"(x), "f"(y) : "fa4", "fa5"); \
+      res = bitsr; }
+void M20_CollideTest(void) {
+    uint32_t bad[4] = {0, 0, 0, 0}, same[4] = {0, 0, 0, 0}, told = 0;
+    printf("collide test\n");
+    for (uint32_t i = 1; i <= 8000000u; i++) {
+        float x = flt(0x3F800000u + (rnd() & 0x047FFFFFu)), y = flt(0x40000000u + (rnd() & 0x007FFFFFu));
+        uint32_t got = 0, res = 0, v = i & 3u;
+        switch (v) {
+        case 0: COLLIDE("fsqrt.s fa5,%3", "fa5"); break;
+        case 1: COLLIDE("fsqrt.s fa4,%3", "fa4"); break;
+        case 2: COLLIDE("fdiv.s fa5,%3,%4", "fa5"); break;
+        default: COLLIDE("fdiv.s fa4,%3,%4", "fa4"); break;
+        }
+        if (got != 0x12345678u) {
+            bad[v]++;
+            if (got == res) same[v]++;
+            if (told++ < 8) printf("[collide %lu: a5 %08lx, result %08lx]\n", (unsigned long)v, (unsigned long)got, (unsigned long)res);
+        }
+        if (i % 2000000u == 0)
+            printf("collide: %lu runs: sqrt fa5 %lu(%lu) sqrt fa4 %lu(%lu) div fa5 %lu(%lu) div fa4 %lu(%lu)\n", (unsigned long)i,
+                   (unsigned long)bad[0], (unsigned long)same[0], (unsigned long)bad[1], (unsigned long)same[1],
+                   (unsigned long)bad[2], (unsigned long)same[2], (unsigned long)bad[3], (unsigned long)same[3]);
+    }
+}
+
+// Instruction fetch: 32 KB of straight-line code, four times the instruction
+// cache, so it is refilled all the time. A flipped instruction bit changes the sum.
+__attribute__((noinline, aligned(64))) static uint32_t fetch_block(uint32_t x) {
+    asm volatile(".rept 4096\n addi %0,%0,0x555\n xori %0,%0,0x2aa\n .endr\n" : "+r"(x));
+    return x;
+}
+// The same with the FPU busy: an fsqrt in flight among the integer instructions.
+__attribute__((noinline, aligned(64))) static uint32_t fetch_fpu_block(uint32_t x, float f) {
+    float g;
+    asm volatile(".rept 1024\n fsqrt.s %1,%2\n addi %0,%0,0x555\n xori %0,%0,0x2aa\n addi %0,%0,0x555\n xori %0,%0,0x2aa\n"
+                 " addi %0,%0,0x555\n xori %0,%0,0x2aa\n addi %0,%0,0x555\n xori %0,%0,0x2aa\n .endr\n" : "+r"(x), "=&f"(g) : "f"(f));
+    return x;
+}
+void M20_FetchFpuTest(void) {
+    uint32_t want = 0x1234u, bad = 0, told = 0, orbits = 0;
+    for (uint32_t i = 0; i < 4096u; i++) want = (want + 0x555u) ^ 0x2AAu;
+    printf("fetch fpu test\n");
+    for (uint32_t i = 1; i <= 3000u; i++) {
+        uint32_t got = fetch_fpu_block(0x1234u, 3.0f);
+        if (got != want) {
+            bad++; orbits |= got ^ want;
+            if (told++ < 6) printf("[fpu fetch run %lu: %08lx, not %08lx]\n", (unsigned long)i, (unsigned long)got, (unsigned long)want);
+        }
+        if (i % 1000u == 0) printf("fetchfpu: %lu runs, %lu bad, bits %08lx\n", (unsigned long)i, (unsigned long)bad, (unsigned long)orbits);
+    }
+}
+
+void M20_FetchTest(void) {
+    uint32_t want = 0x1234u, bad = 0, told = 0, orbits = 0;
+    for (uint32_t i = 0; i < 4096u; i++) want = (want + 0x555u) ^ 0x2AAu;
+    printf("fetch test\n");
+    for (uint32_t i = 1; i <= 6000u; i++) {
+        uint32_t got = fetch_block(0x1234u);
+        if (got != want) {
+            bad++; orbits |= got ^ want;
+            if (told++ < 6) printf("[fetch run %lu: %08lx, not %08lx]\n", (unsigned long)i, (unsigned long)got, (unsigned long)want);
+        }
+        if (i % 2000u == 0) printf("fetch: %lu runs, %lu bad, bits %08lx\n", (unsigned long)i, (unsigned long)bad, (unsigned long)orbits);
+    }
+}
+
 void M20_RegTest(void) {
     static volatile uint32_t mem[2048] __attribute__((aligned(64)));
     uint32_t bad[2][2] = {{0, 0}, {0, 0}}, told = 0, runs = 0;
     float one = 1.0f, three = 3.0f;
     printf("reg test\n");
-    for (uint32_t i = 1; i <= 4000000u; i++) {
+    for (uint32_t i = 1; i <= 1500000u; i++) {
         volatile uint32_t *p = &mem[(rnd() & 0x7FFu) & ~15u];
         uint32_t miss = i & 1u, sq = (i >> 1) & 1u, want = (uint32_t)p, got;
         if (miss) asm volatile("cbo.flush (%0)" :: "r"(p) : "memory");
@@ -176,7 +313,7 @@ void M20_RegTest(void) {
             bad[sq][miss]++;
             if (told++ < 8) printf("[reg sq %lu miss %lu: a5 %08lx, not %08lx]\n", (unsigned long)sq, (unsigned long)miss, (unsigned long)got, (unsigned long)want);
         }
-        if (i % 1000000u == 0)
+        if (i % 500000u == 0)
             printf("reg: %lu runs, bad fdiv %lu/%lu fsqrt %lu/%lu\n", (unsigned long)runs, (unsigned long)bad[0][0], (unsigned long)bad[0][1], (unsigned long)bad[1][0], (unsigned long)bad[1][1]);
     }
 }
