@@ -227,9 +227,16 @@ static void set_regs(void) {
     eng.t0 = fix(d_tdivzorigin, eng.et);
     eng.tu = fix(d_tdivzstepu, eng.et);
     eng.tv = fix(d_tdivzstepv, eng.et);
-    eng.z0 = fix(d_ziorigin, 31);
+    // (1/z at the screen's corner can be far past 1 on a steep surface, more so on
+    // a wider screen, and the conversion would saturate. So from the centre, back
+    // to the corner in wrapping integers, as the engine's adders work.)
     eng.zu = fix(d_zistepu, 31);
     eng.zv = fix(d_zistepv, 31);
+    {
+        int32_t cu = vid.width / 2, cv = vid.height / 2;
+        eng.z0 = (int32_t)((uint32_t)fix(d_ziorigin + (float)cu * d_zistepu + (float)cv * d_zistepv, 31)
+                           - (uint32_t)cu * (uint32_t)eng.zu - (uint32_t)cv * (uint32_t)eng.zv);
+    }
     eng.sadj = sadjust;
     eng.tadj = tadjust;
     eng.smax = bbextents;
