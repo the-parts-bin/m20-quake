@@ -154,13 +154,23 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	if (lzi0 > r_nearzi)	// for mipmap finding
 		r_nearzi = lzi0;
 
+#ifdef M20
+	// Before the return: r_u1 and r_v1 are the next edge's start when the
+	// first of the next face is clipped away (r_lastvertvalid). With the old
+	// ceiling a single point looked like an edge over many lines, and 0 / 0
+	// for its step sent R_StepActiveU off the head of the list.
+	r_ceilv1 = (int) ceil(r_v1);
+#endif
+
 // for right edges, all we want is the effect on 1/z
 	if (r_nearzionly)
 		return;
 
 	r_emitted = 1;
 
+#ifndef M20
 	r_ceilv1 = (int) ceil(r_v1);
+#endif
 
 
 // create the edge

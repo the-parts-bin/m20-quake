@@ -74,16 +74,39 @@ double M20_Time(void) {
 // interrupts are enabled yet).
 extern void trap_entry(void);
 extern uint32_t misaligned_traps;
-// With -DM20_STALL: every 2 s, where the program was (a stall finder).
+// With -DM20_STALL: every 2 s, where the program was and the span engine's
+// state (a stall finder: a hang with interrupts on keeps printing).
 void vblank_flip(void) {
 #ifdef M20_STALL
     static uint32_t n;
     if (++n % 120u == 0) {
-        uint32_t pc, ra;
+        uint32_t pc;
+        volatile uint32_t *hw = (volatile uint32_t *)0x490000u;   // the span engine
         asm volatile("csrr %0, mepc" : "=r"(pc));
-        ra = 0;
-        printf("[pc %08lx]\n", (unsigned long)pc);
-        (void)ra;
+        printf("[pc %08lx engine %08lx pixels %08lx misses %08lx cycles %08lx]\n", (unsigned long)pc,
+               (unsigned long)hw[20], (unsigned long)hw[21], (unsigned long)hw[22], (unsigned long)hw[23]);
+        // The same place as last time: a hang. The registers, and the edge
+        // list (r_edge.c's edge_t) from a5 and a6, as R_StepActiveU walks it.
+        static uint32_t last, told;
+        extern uint32_t *m9b_irq_regs;
+        const uint32_t *r = m9b_irq_regs;
+        if (pc - last + 8u <= 16u && told < 2u) {
+            told++;
+            for (int i = 1; i < 32; i++)
+                printf("x%-2d %08lx%s", i, (unsigned long)r[i], i % 8 == 7 ? "\n" : "  ");
+            printf("\n");
+            for (int w = 0; w < 2; w++) {
+                uint32_t e = r[15 + w];
+                printf("walk from %s\n", w ? "a6" : "a5");
+                for (int i = 0; i < 12 && e >= 0x800000u && e < 0xFFFFE0u && !(e & 3u); i++) {
+                    const uint32_t *q = (const uint32_t *)(uintptr_t)e;
+                    printf(" %08lx u %08lx step %08lx prev %08lx next %08lx surfs %08lx\n", (unsigned long)e,
+                           (unsigned long)q[0], (unsigned long)q[1], (unsigned long)q[2], (unsigned long)q[3], (unsigned long)q[4]);
+                    e = q[2];
+                }
+            }
+        }
+        last = pc;
     }
 #endif
 }
@@ -422,6 +445,9 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
     printf("\n");
     QG_Create(nargs, args);
+#ifdef M20_FPUTEST
+    { extern void M20_FpuTest(void); M20_FpuTest(); }
+#endif
     double last = M20_Time();
     uint32_t frames = 0;
     double report = last;
