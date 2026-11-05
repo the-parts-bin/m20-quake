@@ -62,11 +62,7 @@ void	VID_Init (unsigned char *palette)
 	// (r_warpbuffer's size: a larger view is warped from a smaller one)
 	vid.maxwarpwidth = WARP_WIDTH;
 	vid.maxwarpheight = WARP_HEIGHT;
-#ifdef M20
-	vid.aspect = ((float)BASEHEIGHT / BASEWIDTH) * (320.0f / 240.0f);	// 480p is a 4:3 picture
-#else
 	vid.aspect = 1.0;
-#endif
 #ifdef M20
 	vid.numpages = 2;	// (so the status bar and the rest are drawn into both)
 #else
@@ -83,7 +79,7 @@ void	VID_Init (unsigned char *palette)
 
 #ifdef M20
 	// (The span engine lights most surfaces itself, without the cache.)
-	surfcache_size = 512 * 1024;
+	surfcache_size = 256 * 1024;
 #else
 	surfcache_size = D_SurfaceCacheForRes(BASEWIDTH, BASEHEIGHT);
 #endif

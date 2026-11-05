@@ -150,6 +150,37 @@ static void store_test(void) {
     }
 }
 
+// R_ViewChanged's a5 turned into a float right after fdiv.s fa5: does a long FPU
+// operation reach the integer register of the same number? fdiv or fsqrt, then
+// a load through that register (a miss, or not), after 0..n instructions.
+void M20_RegTest(void) {
+    static volatile uint32_t mem[2048] __attribute__((aligned(64)));
+    uint32_t bad[2][2] = {{0, 0}, {0, 0}}, told = 0, runs = 0;
+    float one = 1.0f, three = 3.0f;
+    printf("reg test\n");
+    for (uint32_t i = 1; i <= 4000000u; i++) {
+        volatile uint32_t *p = &mem[(rnd() & 0x7FFu) & ~15u];
+        uint32_t miss = i & 1u, sq = (i >> 1) & 1u, want = (uint32_t)p, got;
+        if (miss) asm volatile("cbo.flush (%0)" :: "r"(p) : "memory");
+        register uint32_t a5 asm("a5") = want;
+        register float fa5 asm("fa5") = one;
+        if (sq)
+            asm volatile("fsqrt.s fa5,%2\n flw fa3,0(a5)\n flw fa4,4(a5)\n"
+                         : "+r"(a5), "+f"(fa5) : "f"(three) : "fa3", "fa4", "memory");
+        else
+            asm volatile("fdiv.s fa5,fa5,%2\n flw fa3,0(a5)\n flw fa4,4(a5)\n"
+                         : "+r"(a5), "+f"(fa5) : "f"(three) : "fa3", "fa4", "memory");
+        got = a5;
+        runs++;
+        if (got != want) {
+            bad[sq][miss]++;
+            if (told++ < 8) printf("[reg sq %lu miss %lu: a5 %08lx, not %08lx]\n", (unsigned long)sq, (unsigned long)miss, (unsigned long)got, (unsigned long)want);
+        }
+        if (i % 1000000u == 0)
+            printf("reg: %lu runs, bad fdiv %lu/%lu fsqrt %lu/%lu\n", (unsigned long)runs, (unsigned long)bad[0][0], (unsigned long)bad[0][1], (unsigned long)bad[1][0], (unsigned long)bad[1][1]);
+    }
+}
+
 // The game data, read twice: a sum for each megabyte, to compare with the
 // host's copy and between the passes.
 static void file_test(void) {

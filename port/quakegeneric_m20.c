@@ -444,6 +444,9 @@ int main(int argc, char *argv[]) {
     printf("Quake on the m20:");
     for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
     printf("\n");
+#ifdef M20_FPUTEST
+    { extern void M20_RegTest(void); M20_RegTest(); }
+#endif
     QG_Create(nargs, args);
 #ifdef M20_FPUTEST
     { extern void M20_FpuTest(void); M20_FpuTest(); }

@@ -43,14 +43,14 @@ endif
 # M20_MEMSIZE, is one malloc), the stack at the top of the 8 MB. The stack
 # holds Quake's edges and surfaces: R_EdgeDrawing and R_ScanEdges alone
 # take 214 KB.
-MEMSIZE ?= 0x5A0000
+MEMSIZE ?= 0x510000
 STACK ?= 0x40000
 # r_m20span at start-up: 0 Quake's own span drawers, 1 the engine, 2 the C model
 SPAN ?= 1
 
 CFLAGS  := $(ARCH) -O2 -flto -g -specs=picolibc.specs --picolibc-buildtype=release \
            -ffunction-sections -fdata-sections -std=gnu99 \
-           -DM20 -DM20_MEMSIZE=$(MEMSIZE) -DM20_SPAN_DEFAULT=\"$(SPAN)\" -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
+           -DM20 -DM20_MEMSIZE=$(MEMSIZE) -DMINIMUM_MEMORY=$(MEMSIZE) -DM20_SPAN_DEFAULT=\"$(SPAN)\" -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
            -Iquakegeneric -Iport -I$(CORE_FW) -I$(CORE_FW)/fatfs \
            -Wall -Wno-unused-but-set-variable -Wno-unused-variable -Wno-parentheses \
            -Wno-missing-braces -Wno-dangling-else -Wno-pointer-sign -Wno-trigraphs \
@@ -96,8 +96,8 @@ endif
 # (port/m20_pgo.c); PGO=use builds from them. Both build in build-pgo/,
 # where the .gcda files belong: remove its .o files between them, and copy
 # new .gcda files to pgo/. PGO=gen's image
-# is larger: make PGO=gen MEMSIZE=0x500000 STACK=0x20000
-# EXTRA=-DMINIMUM_MEMORY=0x500000 ARGS="+timedemo demo1", and the same for
+# is larger: make PGO=gen MEMSIZE=0x4A0000 STACK=0x20000
+# ARGS="+timedemo demo1", and the same for
 # demo2 and demo3, each run with tdrun.py --perf LOG; then
 # tools/pgo_merge.py build-pgo LOG...
 ifeq ($(FPU)$(PROFILE)$(PERF),1)
