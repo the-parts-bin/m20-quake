@@ -263,7 +263,7 @@ void M20_SpanSurface(espan_t *spans) {
         SPAN_HW[14] = (uint32_t)eng.smax;
         SPAN_HW[15] = (uint32_t)eng.tmax;
         for (espan_t *p = spans; p; p = p->pnext)
-            SPAN_HW[0] = (uint32_t)p->count << 17 | (uint32_t)p->v << 9 | (uint32_t)p->u;
+            SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
         return;
     }
     for (espan_t *p = spans; p; p = p->pnext) {
@@ -368,7 +368,7 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
         SPAN_HW[14] = (uint32_t)eng.smax;
         SPAN_HW[15] = (uint32_t)eng.tmax;
         for (espan_t *p = spans; p; p = p->pnext)
-            SPAN_HW[0] = (uint32_t)p->count << 17 | (uint32_t)p->v << 9 | (uint32_t)p->u;
+            SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
         return;
     }
     pix_tex = tex;
