@@ -935,6 +935,16 @@ void Sbar_Draw (void)
 
 	sb_updates++;
 
+#ifdef M20
+	// (Just the sides, unless the bar's at the left: it covers the rest.)
+	if (sb_lines && vid.width > 320 && cl.gametype != GAME_DEATHMATCH)
+	{
+		int side = (vid.width - 320) >> 1;
+		Draw_TileClear (0, vid.height - sb_lines, side, sb_lines);
+		Draw_TileClear (vid.width - side, vid.height - sb_lines, side, sb_lines);
+	}
+	else
+#endif
 	if (sb_lines && vid.width > 320) 
 		Draw_TileClear (0, vid.height - sb_lines, vid.width, sb_lines);
 
