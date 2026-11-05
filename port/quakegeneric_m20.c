@@ -1,7 +1,7 @@
 // quakegeneric platform layer for the m20 SoC (../README.md). A first
 // version: enough to see Quake run.
 //
-// Video: RGB565. Quake draws its 360 x 240 frame straight into one of two
+// Video: RGB565. Quake draws its 640 x 360 frame straight into one of two
 // display buffers (vid.buffer: the one not on the screen; the span engine
 // draws the world's surfaces into it, lit per pixel); QG_DrawFrame writes
 // it back from the data cache, points the line table at it (each Quake row
@@ -145,8 +145,8 @@ void QG_Init(void) {
     memset(disp[0], 0, 4u * W * H);
     back = 0;
     vid.buffer = vid.conbuffer = disp[back];
-    for (uint32_t y = 0; y < 480u; y++) VRAM_TABLE[y] = LINE_BLANK;
-    VIDEO_HWIN = (360u + W) << 16 | (360u - W);   // centred in the 720 columns
+    for (uint32_t y = 0; y < 720u; y++) VRAM_TABLE[y] = LINE_BLANK;
+    VIDEO_HWIN = (640u + W) << 16 | (640u - W);   // centred in the 1280 columns
     VIDEO_CTRL = 1;
 }
 
@@ -444,10 +444,13 @@ int main(int argc, char *argv[]) {
     printf("Quake on the m20:");
     for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
     printf("\n");
-#ifdef M20_FPUTEST
+#if defined(M20_FPUTEST) && !defined(M20_SCREEN)
     { extern void M20_RegTest(void), M20_AluTest(void), M20_SdramTest(void), M20_CollideTest(void), M20_FetchTest(void), M20_FetchFpuTest(void); M20_FetchFpuTest(); M20_FetchTest(); M20_CollideTest(); M20_AluTest(); M20_RegTest(); }
 #endif
     QG_Create(nargs, args);
+#ifdef M20_SCREEN
+    { extern void M20_ScreenTest(uint16_t *, uint16_t *, int, int, void (*)(void *)); M20_ScreenTest(disp[0], disp[1], W, H, QG_DrawFrame); }
+#endif
 #ifdef M20_FPUTEST
     { extern void M20_FpuTest(void); M20_FpuTest(); }
 #endif

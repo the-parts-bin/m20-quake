@@ -290,6 +290,28 @@ void M20_FetchTest(void) {
     }
 }
 
+// For a display: colour bars in the game's scanout mode, 30 s idle, then 30 s of
+// CPU, FPU and memory load, and so on. Does the picture go with the load?
+void M20_ScreenTest(uint16_t *a, uint16_t *b, int w, int h, void (*show)(void *)) {
+    static const uint16_t bars[8] = {0xFFFF, 0xFFE0, 0x07FF, 0x07E0, 0xF81F, 0xF800, 0x001F, 0x0000};
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) a[y * w + x] = b[y * w + x] = bars[x * 8 / w];
+    for (uint32_t i = 0; i < (uint32_t)(w * h * 2); i += 32u) { asm volatile("cbo.clean (%0)" :: "r"((char *)a + i) : "memory"); asm volatile("cbo.clean (%0)" :: "r"((char *)b + i) : "memory"); }
+    show(a);
+    volatile uint32_t *clock = (volatile uint32_t *)0x44000Cu, *m = (volatile uint32_t *)0xB00000u;
+    for (uint32_t round = 1;; round++) {
+        printf("screen: IDLE %lu\n", (unsigned long)round);
+        uint32_t t0 = *clock;
+        while (*clock - t0 < 54000000u * 30u) { }
+        printf("screen: LOAD %lu\n", (unsigned long)round);
+        t0 = *clock;
+        float f = 3.0f, g;
+        while (*clock - t0 < 54000000u * 30u) {
+            for (uint32_t i = 0; i < 65536u; i += 8u) { m[i] = m[i + 16384u] + i; asm volatile("fsqrt.s %0,%1" : "=f"(g) : "f"(f)); f = g + 2.0f; }
+        }
+    }
+}
+
 void M20_RegTest(void) {
     static volatile uint32_t mem[2048] __attribute__((aligned(64)));
     uint32_t bad[2][2] = {{0, 0}, {0, 0}}, told = 0, runs = 0;
