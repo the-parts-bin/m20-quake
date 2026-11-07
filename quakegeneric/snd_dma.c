@@ -505,7 +505,11 @@ void S_StartSound(int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float f
 			continue;
 		if (check->sfx == sfx && !check->pos)
 		{
+#ifdef M20_FRAMEHASH	// (whether this runs depends on the mixer's timing: leave rand() alone)
+			skip = 0;
+#else
 			skip = rand () % (int)(0.1*shm->speed);
+#endif
 			if (skip >= target_chan->end)
 				skip = target_chan->end - 1;
 			target_chan->pos += skip;

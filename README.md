@@ -30,6 +30,18 @@ PC-sampling profiler (60 samples a second, at the vertical blank):
 `m9bctl.py prof OUT.log` saves what it gathered since the last report, and
 `../core/tools/prof.py build-prof/quake.elf OUT.log` sums it by function.
 
+## Comparing builds
+
+`make HASH=1` builds a timedemo that runs the same on every run: time goes by
+fixed steps and `rand()` is a fixed sequence, so each frame's hash can be
+compared between builds, clocks and boards. `tools/framehash.py LOG...`
+compares the logs tdrun.py saves. `make HASH=1 SPAN=3` draws with the C model
+of the engine instead, which is the reference. `CHECK=1` also compares each of
+the engine's spans with the C model, and `SCAN=1` runs memory, arithmetic and
+instruction fetch checks with the engine at work (`port/m20_scan.c`). A run
+that finishes without errors proves little: wrong frames at 60 MHz showed up
+only here.
+
 ## Changes to quakegeneric
 
 - `quakegeneric.c`: the heap's size (`M20_MEMSIZE`, 6 MB) and the game's

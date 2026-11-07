@@ -12,6 +12,8 @@
 #   make PGO=gen   collects a new profile (build-pgo/, below)
 #   make PROFILE=1 the PC-sampling profiler (build-prof/): Ctrl-P on the
 #                  UART (../core/tools/m9bctl.py prof) prints it
+#   make HASH=1    the frame hash timedemo (build-hash/, below); SCAN=1 and
+#                  CHECK=1 add the checks that go with it
 
 CROSS   ?= riscv64-unknown-elf-
 CC      := $(CROSS)gcc
@@ -43,6 +45,10 @@ endif
 # M20_MEMSIZE, is one malloc), the stack at the top of the 8 MB. The stack
 # holds Quake's edges and surfaces: R_EdgeDrawing and R_ScanEdges alone
 # take 214 KB.
+# (SCAN=1's pattern area takes 256 KB of it)
+ifdef SCAN
+MEMSIZE ?= 0x4D0000
+endif
 MEMSIZE ?= 0x510000
 STACK ?= 0x40000
 # r_m20span at start-up: 0 Quake's own span drawers, 1 the engine, 2 the C model
@@ -81,6 +87,32 @@ CFLAGS += -fno-aggressive-loop-optimizations
 QUAKE_FLAGS := -fsingle-precision-constant -include port/m20_math.h
 ifdef PROFILE
 CFLAGS += -DM9B_PROFILE -DPROF_TOP=0   # every bucket, in address order
+endif
+# The frame hash timedemo: every frame the same on every run, so that builds,
+# clocks and boards can be compared pixel by pixel. Each frame prints the
+# hash of the picture, of 15 bands of 24 lines, of what the game decided and
+# the count of rand() calls; tools/framehash.py compares the logs of runs
+# (tdrun.py saves them). Time goes by fixed steps from the start, and rand()
+# is a fixed sequence that the mixer and skipped frames leave alone.
+#   SPAN=3   the C model instead of the engine: the reference
+#   CHECK=1  each span of the engine's checked against the C model, from SDRAM
+#   SCAN=1   memory, arithmetic and fetch checks with the engine at work
+#            (port/m20_scan.c)
+# EXTRA=-DM20_SPAN_SERIAL waits for the engine after each surface.
+ifneq ($(SCAN)$(CHECK),)
+HASH := 1
+endif
+ifdef HASH
+B := build-hash
+PGO ?= 0
+ARGS ?= +host_framerate 0.05 +timedemo demo2
+CFLAGS += -DM20_FRAMEHASH -Drand=m20_rand
+endif
+ifdef SCAN
+CFLAGS += -DM20_SCAN
+endif
+ifdef CHECK
+CFLAGS += -DM20_SPAN_CHECK
 endif
 ifdef ARGS
 CFLAGS += -DM20_ARGS='"$(ARGS)"'   # the command line when the disk has no QUAKE/m20args.txt
@@ -150,6 +182,6 @@ $(B)/quakegeneric_m20.o $(B)/span_engine.o: $(B)/args.stamp
 -include $(OBJ:.o=.d)
 
 clean:
-	rm -rf build build-sf build-prof build-perf build-pgo
+	rm -rf build build-sf build-prof build-perf build-pgo build-hash
 
 .PHONY: all clean FORCE

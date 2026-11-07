@@ -496,6 +496,9 @@ Returns false if the time is too short to run a frame
 */
 qboolean Host_FilterTime (float time)
 {
+#ifdef M20_FRAMEHASH	// (notify lines and the like go by realtime, from the start)
+	time = 0.05;
+#endif
 	realtime += time;
 
 	if (!cls.timedemo && realtime - oldrealtime < 1.0/72.0)
@@ -586,7 +589,9 @@ void _Host_Frame (float time)
 		return;			// something bad happened, or the server disconnected
 
 // keep the random time dependent
+#ifndef M20_FRAMEHASH	// (this runs on frames that are skipped, too: as many as time allows)
 	rand ();
+#endif
 	
 // decide the simulation time
 	if (!Host_FilterTime (time))

@@ -248,6 +248,64 @@ static void set_regs(void) {
     eng.tmax = bbextentt;
 }
 
+#ifdef M20_SPAN_CHECK
+// After each surface: the engine's spans against the C model's, from SDRAM.
+// (printf per span found wrong, up to a limit a frame; the second read tells
+// a wrong read from wrong memory.)
+static uint16_t chk_fb[1024];
+static int16_t chk_zb[1024];
+static uint32_t chk_spans, chk_bad;
+static void check(espan_t *spans, int lit, const char *name, int mip) {
+    static int printed, frame = -1;
+    if (frame != r_framecount) {
+        frame = r_framecount;
+        printed = 0;
+    }
+    hw_wait();
+    uint16_t *fb = pix_fb;
+    for (espan_t *p = spans; p; p = p->pnext) {
+        pix_fb = chk_fb;
+        pix_zb = chk_zb;
+        if (lit) sc_span_lit(&eng, p->u, p->v, p->count);
+        else sc_span(&eng, p->u, p->v, p->count);
+        uint16_t *f = d_viewbuffer + p->v * screenwidth + p->u;
+        int16_t *z = (int16_t *)d_pzbuffer + p->v * d_zwidth + p->u;
+        cache_flush(f, 2u * (uint32_t)p->count);
+        cache_flush(z, 2u * (uint32_t)p->count);
+        int nf = 0, nz = 0, first = -1, last = -1;
+        for (int i = 0; i < p->count; i++) {
+            int bf = f[i] != chk_fb[i], bz = z[i] != chk_zb[i];
+            nf += bf;
+            nz += bz;
+            if (bf || bz) {
+                if (first < 0) first = i;
+                last = i;
+            }
+        }
+        chk_spans++;
+        if (nf || nz) {
+            chk_bad++;
+            if (printed++ < 6) {
+                uint16_t gf = f[first], gz = (uint16_t)z[first];
+                cache_flush(f, 2u * (uint32_t)p->count);
+                cache_flush(z, 2u * (uint32_t)p->count);
+                int again = 0;
+                for (int i = 0; i < p->count; i++) again += f[i] != chk_fb[i] || z[i] != chk_zb[i];
+                printf("chk f%d %s m%d lit%d u%d v%d n%d badf %d badz %d at %d..%d got %04x/%04x want %04x/%04x again %d tex %08lx\n",
+                       r_framecount, name, mip, lit, p->u, p->v, p->count, nf, nz, first, last,
+                       gf, gz, chk_fb[first], (uint16_t)chk_zb[first], again, (unsigned long)SDRAM_OFF(pix_tex));
+            }
+        }
+        cache_flush(f, 2u * (uint32_t)p->count);
+        cache_flush(z, 2u * (uint32_t)p->count);
+    }
+    pix_fb = fb;
+}
+void M20_SpanCheckReport(void) {
+    printf("chk total spans %lu bad %lu\n", (unsigned long)chk_spans, (unsigned long)chk_bad);
+}
+#endif
+
 void M20_SpanSurface(espan_t *spans) {
     set_regs();
     pix_tex = (const uint8_t *)cacheblock;
@@ -276,6 +334,15 @@ void M20_SpanSurface(espan_t *spans) {
         SPAN_HW[15] = (uint32_t)eng.tmax;
         for (espan_t *p = spans; p; p = p->pnext)
             SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
+#ifdef M20_SCAN   // (port/m20_scan.c: with the engine at work)
+        { extern void M20_ScanStep(void); M20_ScanStep(); }
+#endif
+#ifdef M20_SPAN_SERIAL   // no overlap with the CPU, to look for races
+        hw_wait();
+#endif
+#ifdef M20_SPAN_CHECK
+        check(spans, 0, "cache", 0);
+#endif
         return;
     }
     for (espan_t *p = spans; p; p = p->pnext) {
@@ -381,6 +448,17 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
         SPAN_HW[15] = (uint32_t)eng.tmax;
         for (espan_t *p = spans; p; p = p->pnext)
             SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
+#ifdef M20_SCAN   // (port/m20_scan.c: with the engine at work)
+        { extern void M20_ScanStep(void); M20_ScanStep(); }
+#endif
+#ifdef M20_SPAN_SERIAL   // no overlap with the CPU, to look for races
+        hw_wait();
+#endif
+#ifdef M20_SPAN_CHECK
+        pix_tex = tex;
+        pix_light = lm;
+        check(spans, 1, mt->name, miplevel);
+#endif
         return;
     }
     pix_tex = tex;

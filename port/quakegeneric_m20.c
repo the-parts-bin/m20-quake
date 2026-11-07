@@ -150,10 +150,56 @@ void QG_Init(void) {
     VIDEO_CTRL = 1;
 }
 
+#ifdef M20_FRAMEHASH
+// rand(), counted, and the same on every run (-Drand=m20_rand)
+static uint32_t m20_rand_calls, m20_rand_state = 1;
+int m20_rand(void) {
+    m20_rand_calls++;
+    m20_rand_state = m20_rand_state * 1103515245u + 12345u;
+    return (int)(m20_rand_state >> 16 & 0x7fff);
+}
+#endif
+
 void QG_DrawFrame(void *pixels) {
     uint16_t *buf = pixels;   // (disp[back])
     for (uintptr_t a = (uintptr_t)buf; a < (uintptr_t)buf + 2u * W * H; a += 64u)
         asm volatile("cbo.clean (%0)" :: "r"(a) : "memory");
+#ifdef M20_FRAMEHASH   // each frame's hash, for comparing builds pixel by pixel
+    {                  // (with +host_framerate, so that frames don't depend on time)
+        static uint32_t n;
+        for (uintptr_t a = (uintptr_t)buf; a < (uintptr_t)buf + 2u * W * H; a += 64u)
+            asm volatile("cbo.flush (%0)" :: "r"(a) : "memory");
+        uint32_t h = 2166136261u;
+        const uint32_t *p = (const uint32_t *)buf;
+        for (uint32_t i = 0; i < W * H / 2u; i++) h = (h ^ p[i]) * 16777619u;
+        printf("fh %lu %08lx", (unsigned long)n++, (unsigned long)h);
+        for (uint32_t b = 0; b < 15u; b++) {
+            uint32_t g = 2166136261u;
+            for (uint32_t i = b * 24u * W / 2u; i < (b + 1u) * 24u * W / 2u; i++) g = (g ^ p[i]) * 16777619u;
+            printf(" %04lx", (unsigned long)(g >> 16));
+        }
+        // What the game decided, apart from how it was drawn
+        uint32_t st = 2166136261u;
+#define ST(p_, n_) do { const uint32_t *w_ = (const uint32_t *)(p_); \
+                        for (uint32_t k_ = 0; k_ < (n_) / 4u; k_++) st = (st ^ w_[k_]) * 16777619u; } while (0)
+        ST(r_refdef.vieworg, sizeof(vec3_t));
+        ST(r_refdef.viewangles, sizeof(vec3_t));
+        ST(&cl.time, sizeof(cl.time));
+        ST(cl_dlights, sizeof(cl_dlights));
+        for (int e = 0; e < cl_numvisedicts; e++) {
+            ST(cl_visedicts[e]->origin, sizeof(vec3_t));
+            ST(cl_visedicts[e]->angles, sizeof(vec3_t));
+            st = (st ^ (uint32_t)cl_visedicts[e]->frame) * 16777619u;
+        }
+        printf(" s %08lx %d r %lu\n", (unsigned long)st, cl_numvisedicts, (unsigned long)m20_rand_calls);
+#ifdef M20_SCAN
+        if (n % 50u == 0) { extern void M20_ScanReport(void); M20_ScanReport(); }
+#endif
+#ifdef M20_SPAN_CHECK
+        if (n % 100u == 0) { extern void M20_SpanCheckReport(void); M20_SpanCheckReport(); }
+#endif
+    }
+#endif
     for (uint32_t y = 0; y < H; y++) {
         uint32_t e = line_16bpp((uintptr_t)&buf[y * W]) | LINE_2X;
         VRAM_TABLE[2u * y] = e;
@@ -403,6 +449,9 @@ void QG_Quit(void) {
 // Main loop
 // ---------------------------------------------------------------------
 int main(int argc, char *argv[]) {
+#ifdef M20_FRAMEHASH   // (the firmware in the flash may be built for another clock)
+    *(volatile uint32_t *)(M9B_UART + 0x8u) = UART_DIV_FOR(115200u);
+#endif
     (void)argc;
     (void)argv;
     asm volatile("csrw mtvec, %0" :: "r"(&trap_entry));
