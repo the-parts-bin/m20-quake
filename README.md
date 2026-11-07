@@ -2,16 +2,16 @@
 
 Quake (erysdren's [quakegeneric](https://github.com/erysdren/quakegeneric),
 the GPL WinQuake source with a small platform layer) as a program for the
-m20 SoC (`../m20`, a VexiiRiscv with a single-precision FPU on the Tang
+m20 SoC (`../m20-core`, a VexiiRiscv with a single-precision FPU on the Tang
 Nano 20K).
 
 **Status:** early, but it plays: E1M1 at about 9.3 fps (in the start
 area), with keys from the serial terminal only and no sound. It builds
 (`make`; `make FPU=0` for soft float), loads through the core's serial
-loader (`../m20/tools/run.py build-pgo/quake.bin`, 2.6 s at 3 Mbaud) and reads
+loader (`../m20-core/tools/run.py build-pgo/quake.bin`, 2.6 s at 3 Mbaud) and reads
 `QUAKE/id1/pak0.pak` from the disk (`data/README.md`): without an SD card,
 a cut-down shareware pak in the SPI flash (`tools/mkpak.py`, then
-`../m20/tools/mkdisk/mkdisk.sh data/card`).
+`../m20-core/tools/mkdisk/mkdisk.sh data/card`).
 
 ## Layout
 
@@ -24,11 +24,11 @@ a cut-down shareware pak in the SPI flash (`tools/mkpak.py`, then
 
 ## Inspecting it
 
-`../m20/tools/m9bctl.py shot OUT.png` saves the frame on screen (about 7 s
+`../m20-core/tools/m9bctl.py shot OUT.png` saves the frame on screen (about 7 s
 at 115200 baud; the game stops meanwhile). `make PROFILE=1` builds with the
 PC-sampling profiler (60 samples a second, at the vertical blank):
 `m9bctl.py prof OUT.log` saves what it gathered since the last report, and
-`../m20/tools/prof.py build-prof/quake.elf OUT.log` sums it by function.
+`../m20-core/tools/prof.py build-prof/quake.elf OUT.log` sums it by function.
 
 ## Changes to quakegeneric
 

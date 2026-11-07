@@ -4,7 +4,7 @@
 //
 // The driver (M20_SpanSurface, the CPU's part) turns the surface's float
 // gradients into the engine's fixed-point registers, once per surface. The
-// engine (sc_span, ../m20/firmware/span_core.h) then works in integers only, per span:
+// engine (sc_span, ../m20-core/firmware/span_core.h) then works in integers only, per span:
 //   - s/z, t/z and 1/z at the span's start by multiply-add from the
 //     surface's origin and u, v gradients;
 //   - every 16 pixels (Quake: 8) the perspective division: 1/zi from a
@@ -100,7 +100,7 @@ static int32_t origin(float o, float du, float dv, int32_t iu, int32_t iv, int32
 }
 
 // ---------------------------------------------------------------------
-// The hardware (../m20/rtl/span_engine.v): commands into its FIFO at
+// The hardware (../m20-core/rtl/span_engine.v): commands into its FIFO at
 // 0x490000 + 4 r (r = 0: a span), the buffers' registers, its status
 // ---------------------------------------------------------------------
 #define SPAN_HW      ((volatile uint32_t *)0x490000u)

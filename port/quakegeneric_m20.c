@@ -19,7 +19,7 @@
 //
 // Time: CLOCK_CNT (the CPU clock, 54 MHz) extended to 64 bits.
 //
-// Inspection over the UART (../m20/tools/m9bctl.py): 0x1C sends the last
+// Inspection over the UART (../m20-core/tools/m9bctl.py): 0x1C sends the last
 // frame shown (shot), and in a profiling build (make PROFILE=1) 0x10
 // (Ctrl-P) prints the PC-sample profile gathered since the last one
 // (prof), sampled at each vertical blank.
@@ -29,12 +29,12 @@
 #include <string.h>
 
 #include "quakegeneric.h"
-#include "clock.h"      // CLOCK_HZ: ../m20/firmware
-#include "fatfs/ff.h"   // f_stat (../m20/firmware/fatfs)
+#include "clock.h"      // CLOCK_HZ: ../m20-core/firmware
+#include "fatfs/ff.h"   // f_stat (../m20-core/firmware/fatfs)
 
-int m9b_fs_mount(void);       // ../m20/runtime/syscalls.c
+int m9b_fs_mount(void);       // ../m20-core/runtime/syscalls.c
 int m9b_fs_use_flash(void);
-int disk_from_flash(void);    // ../m20/firmware/diskio.c
+int disk_from_flash(void);    // ../m20-core/firmware/diskio.c
 #include "m9b_map.h"
 
 #define CLOCK_CNT     (*(volatile uint32_t *)(M9B_TIMING + 0xCu))
@@ -69,7 +69,7 @@ double M20_Time(void) {
     return (double)ticks() / (double)CLOCK_HZ;
 }
 
-// The runtime's trap handler (../m20/runtime/trap.c): misaligned loads and
+// The runtime's trap handler (../m20-core/runtime/trap.c): misaligned loads and
 // stores emulated, other exceptions reported; its interrupt hooks (no
 // interrupts are enabled yet).
 extern void trap_entry(void);
@@ -259,7 +259,7 @@ static void uart_poll(void) {
 }
 
 // ---------------------------------------------------------------------
-// USB keyboards and mice (../m20/rtl/usb_port.v), polled: a keyboard's
+// USB keyboards and mice (../m20-core/rtl/usb_port.v), polled: a keyboard's
 // report lists the keys held (HID usage codes, up to four here) and its
 // modifiers, so the changes from the last report are the key events; a
 // mouse's motion comes from MOUSE_POS, the hardware's running sums.
@@ -463,7 +463,7 @@ int main(int argc, char *argv[]) {
         last = now;
         frames++;
         if (now - report >= 5.0) {
-            // the span engine's counters (../m20/rtl/span_engine.v): pixels,
+            // the span engine's counters (../m20-core/rtl/span_engine.v): pixels,
             // texel cache misses, cpu_clk cycles busy
             static uint32_t e_pix, e_miss, e_busy;
             volatile uint32_t *eng = (volatile uint32_t *)0x490000u;

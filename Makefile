@@ -11,7 +11,7 @@
 #                  --performance-counters 4)
 #   make PGO=gen   collects a new profile (build-pgo/, below)
 #   make PROFILE=1 the PC-sampling profiler (build-prof/): Ctrl-P on the
-#                  UART (../m20/tools/m9bctl.py prof) prints it
+#                  UART (../m20-core/tools/m9bctl.py prof) prints it
 
 CROSS   ?= riscv64-unknown-elf-
 CC      := $(CROSS)gcc
@@ -20,7 +20,7 @@ SIZE    := $(CROSS)size
 
 # The m20 core: its firmware (SD card, the flash disk, FatFs) and the
 # runtime the programs share (system calls, trap handler, linker script).
-CORE ?= ../m20
+CORE ?= ../m20-core
 CORE_FW := $(CORE)/firmware
 CORE_RT := $(CORE)/runtime
 

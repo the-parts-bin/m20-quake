@@ -1,6 +1,6 @@
 // Sound for the m20: Quake's own mixer (snd_dma.c, snd_mix.c) paints
 // 11025 Hz 16-bit stereo into a ring here, as into a sound card's DMA
-// buffer. The hardware (../m20/README.md, Audio) plays 48 kHz from two
+// buffer. The hardware (../m20-core/README.md, Audio) plays 48 kHz from two
 // halves of 256 frames and raises an interrupt when it moves on from one:
 // the interrupt (runtime/trap.c -> sound_irq) refills that half from the
 // ring, linearly interpolated at 24 kHz with each result held for two
