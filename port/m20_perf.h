@@ -1,6 +1,6 @@
 // m20: per-region CPU counters (make PERF=1, build-perf/): cycles,
 // instructions and four events (VexiiRiscv's --performance-counters 4,
-// ../m20-core/rtl/VexiiRiscv.options), summed over each region's calls between
+// ../core/rtl/VexiiRiscv.options), summed over each region's calls between
 // M20_PerfReset and M20_PerfReport (the timedemo's start and end, cl_demo.c).
 // Regions may nest; each one counts everything inside it.
 #ifndef M20_PERF_H
