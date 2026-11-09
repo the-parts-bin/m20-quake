@@ -1,12 +1,11 @@
-// quakegeneric platform layer for the m20 SoC (../README.md). A first
-// version: enough to see Quake run.
+// quakegeneric platform layer for the m20 SoC (../README.md).
 //
 // Video: RGB565. Quake draws its 640 x 360 frame straight into one of two
 // display buffers (vid.buffer: the one not on the screen; the span engine
 // draws the world's surfaces into it, lit per pixel); QG_DrawFrame writes
 // it back from the data cache, points the line table at it (each Quake row
-// on two of the 480 lines, as 16 bpp 2x lines: 640 pixels, columns 40..679
-// by VIDEO_HWIN) and gives Quake the other. The table is rewritten at
+// on two of the 720 lines, as 16 bpp 2x lines: 640 pixels doubled into
+// the 1280 columns) and gives Quake the other. The table is rewritten at
 // once, not at the vertical blank, so a frame can tear. d_8to16 is the
 // palette as RGB565 (with its flashes), for everything else Quake draws.
 //
@@ -508,7 +507,18 @@ int main(int argc, char *argv[]) {
     double report = last;
     for (;;) {
         double now = M20_Time();
+#ifdef M20_IOTRACE
+        // frames over 100 ms, and how much of them went to file reads
+        extern uint32_t m9b_read_bytes, m9b_read_cycles;
+        uint32_t rb = m9b_read_bytes, rc = m9b_read_cycles;
         QG_Tick(now - last);
+        double took = M20_Time() - now;
+        if (took > 0.1)
+            printf("iot slow frame %d ms: read %u bytes in %u ms\n", (int)(took * 1000.0),
+                   (unsigned)(m9b_read_bytes - rb), (unsigned)((m9b_read_cycles - rc) / (CLOCK_HZ / 1000u)));
+#else
+        QG_Tick(now - last);
+#endif
         last = now;
         frames++;
         if (now - report >= 5.0) {
