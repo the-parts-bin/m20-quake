@@ -1573,8 +1573,14 @@ byte *COM_LoadFile (char *path, int usehunk)
 	((byte *)buf)[len] = 0;
 
 	Draw_BeginDisc ();
+#ifdef M20_IOTRACE	// M20: what is read from the disk, and how long it takes
+	{ double t0 = Sys_FloatTime ();
+#endif
 	Sys_FileRead (h, buf, len);                     
 	COM_CloseFile (h);
+#ifdef M20_IOTRACE
+	printf ("iot load %s %d bytes %d ms (%d)\n", path, len, (int)((Sys_FloatTime () - t0) * 1000.0), usehunk); }
+#endif
 	Draw_EndDisc ();
 
 	return buf;

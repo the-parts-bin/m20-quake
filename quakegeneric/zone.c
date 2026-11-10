@@ -896,6 +896,9 @@ void *Cache_Alloc (cache_user_t *c, int size, char *name)
 		if (cache_head.lru_prev == &cache_head)
 			Sys_Error ("Cache_Alloc: out of memory");
 													// not enough memory at all
+#ifdef M20_IOTRACE	// M20: evictions, which a later use loads again
+		printf ("iot evict %s %d for %s %d\n", cache_head.lru_prev->name, cache_head.lru_prev->size, name, size);
+#endif
 		Cache_Free ( cache_head.lru_prev->user );
 	} 
 	

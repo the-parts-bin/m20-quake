@@ -6,9 +6,12 @@ disk image in the SPI flash (`../core/tools/mkdisk/mkdisk.sh`).
 
 The SD card holds the whole shareware `pak0.pak` (18 MB, from Quake 1.06's
 shareware release, `quake106.zip`; its `resource.1` unpacks with 7z),
-written through the board without taking the card out:
+rewritten with every file 32-bit aligned (`tools/alignpak.py`: 64 bytes;
+the stock pak has half of them at odd offsets). `../sdcard/make_sdcard.sh`
+in m20-system builds the whole card that way; or by hand, written through
+the board without taking the card out:
 
-    mkdir -p data/sd/QUAKE/id1 && cp <path>/ID1/PAK0.PAK data/sd/QUAKE/id1/pak0.pak
+    mkdir -p data/sd/QUAKE/id1 && python3 tools/alignpak.py <path>/ID1/PAK0.PAK data/sd/QUAKE/id1/pak0.pak
     ../core/tools/sdput/sdput.py sync data/sd
 
 (about 4 minutes). Without `QUAKE/m20args.txt` Quake starts E1M1; for the
