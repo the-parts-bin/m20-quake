@@ -83,4 +83,4 @@ only here.
   array ends on purpose (`model.c`'s texinfo vectors), and GCC's loop
   optimizations broke those loops.
 
-**License:** GPL v2 (`quakegeneric/LICENSE`).
+**License:** GPL v2 (`LICENSE`, a copy of `quakegeneric/LICENSE`), the port included.
