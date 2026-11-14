@@ -461,11 +461,12 @@ int main(int argc, char *argv[]) {
     asm volatile("csrs mstatus, %0" :: "r"(1u << 3));
 #endif
     // The command line: QUAKE/m20args.txt on the disk if it's there (say
-    // "+timedemo demo1"), else straight into the first map (the cut-down
-    // pak has no demo loop)
+    // "+timedemo demo1"), else none: Quake's own start, the demo loop (Esc
+    // for the menu); from the flash's disk image, whose cut-down pak has no
+    // demos, straight into the first map
     static char line[256];
-    static char *args[32] = {"quake", "+map", "e1m1", NULL};
-    int nargs = 3;
+    static char *args[32] = {"quake", NULL};
+    int nargs = 1;
 #ifdef M20_ARGS
     // (make ARGS="...": the command line when the disk has no m20args.txt)
     static char built_in[] = M20_ARGS;
@@ -479,6 +480,12 @@ int main(int argc, char *argv[]) {
         printf("no " M20_BASEDIR "/id1 on the SD card: %s\n",
                m9b_fs_use_flash() ? "using the flash's disk image" : "and no disk image in the flash");
     }
+#ifndef M20_ARGS
+    if (disk_from_flash()) {
+        args[1] = "+map"; args[2] = "e1m1"; args[3] = NULL;
+        nargs = 3;
+    }
+#endif
     FILE *f = fopen(M20_BASEDIR "/m20args.txt", "r");
     if (f) {
         size_t n = fread(line, 1, sizeof line - 1, f);

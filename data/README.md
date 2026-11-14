@@ -14,7 +14,8 @@ the board without taking the card out:
     mkdir -p data/sd/QUAKE/id1 && python3 tools/alignpak.py <path>/ID1/PAK0.PAK data/sd/QUAKE/id1/pak0.pak
     ../core/tools/sdput/sdput.py sync data/sd
 
-(about 4 minutes). Without `QUAKE/m20args.txt` Quake starts E1M1; for the
+(about 4 minutes). Without `QUAKE/m20args.txt` Quake starts as on a PC, with
+its demo loop (Esc for the menu; from the flash disk, below, E1M1); for the
 benchmark, `make ARGS="+timedemo demo1"` builds that command line in.
 
 The flash disk's 6 MB is too small for it, so there:
