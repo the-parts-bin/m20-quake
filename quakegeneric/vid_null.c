@@ -35,7 +35,7 @@ viddef_t	vid;				// global video state
 // with anything else (64-byte lines; it's whole lines long). The frame
 // buffers are the port's two display buffers (RGB565, drawn into in turn:
 // vid.buffer is the one not on the screen, QG_Init and QG_DrawFrame set it).
-short	zbuffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(64)));
+short	zbuffer[BASEWIDTH*BASEHEIGHT] __attribute__((aligned(2048)));   // (the span engine: a multiple of 2 KB from the frame)
 #else
 byte	vid_buffer[BASEWIDTH*BASEHEIGHT];
 short	zbuffer[BASEWIDTH*BASEHEIGHT];

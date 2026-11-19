@@ -52,6 +52,9 @@ Mod_Init
 void Mod_Init (void)
 {
 	memset (mod_novis, 0xff, sizeof(mod_novis));
+#ifdef M20_HUNK_TEST	// (tests: this many KB of the hunk taken, to see when models start being reloaded)
+	Hunk_AllocName (M20_HUNK_TEST * 1024, "hunktest");
+#endif
 }
 
 /*
@@ -69,6 +72,9 @@ void *Mod_Extradata (model_t *mod)
 	if (r)
 		return r;
 
+#ifdef M20_PERF
+	Con_Printf ("M20: reloading %s\n", mod->name);	// (purged from the cache: read again)
+#endif
 	Mod_LoadModel (mod, true);
 	
 	if (!mod->cache.data)
@@ -1640,6 +1646,13 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	if (!mod->cache.data)
 		return;
 	memcpy (mod->cache.data, pheader, total);
+#ifdef M20
+	{	// M20: to SDRAM, the skins with the rest: the span engine reads them in place
+		uintptr_t	a;
+		for (a = (uintptr_t)mod->cache.data & ~(uintptr_t)63 ; a < (uintptr_t)mod->cache.data + total ; a += 64)
+			__asm__ volatile ("cbo.clean (%0)" :: "r"(a) : "memory");
+	}
+#endif
 
 	Hunk_FreeToLowMark (start);
 }

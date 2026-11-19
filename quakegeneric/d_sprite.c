@@ -389,6 +389,9 @@ void D_DrawSprite (void)
 	emitpoint_t	*pverts;
 	sspan_t		spans[MAXHEIGHT+1];
 
+#ifdef M20
+	M20_SpanCpuOwn ();	// M20: the engine done with the buffers first
+#endif
 	sprite_spans = spans;
 
 // find the top and bottom vertices, and make sure there's at least one scan to

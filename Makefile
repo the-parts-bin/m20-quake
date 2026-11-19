@@ -181,7 +181,66 @@ $(B)/quakegeneric_m20.o $(B)/span_engine.o: $(B)/args.stamp
 
 -include $(OBJ:.o=.d)
 
-clean:
-	rm -rf build build-sf build-prof build-perf build-pgo build-hash
+# The host test harness (tools/host/m20_host.c, README.md): the same sources
+# as a 32-bit x86 Linux program, the span engine's C emulator
+# (../core/firmware/span_emu.c) in place of the hardware, linked at
+# 0x800000 so that what the engine reads and writes sits in the 8 MB at
+# 0x800000 that stand for the SDRAM; the heap the board's size (from its
+# ELF when it's built). build-host/quake; with HASH=1 (and SPAN=3, ARGS)
+# the frame hash timedemo, build-host-hash/. SDL=0 without the window.
+# HOST_FMA=1 contracts float multiply-adds as the board's FPU does
+# (fmadd.s; -ffp-contract=fast, GCC's default), with x86's FMA.
+HB := build-host$(if $(HASH),-hash)$(if $(filter-out 1,$(SPAN)),-span$(SPAN))$(if $(HOST_FMA),-fma)
+BOARD_ELF ?= $(firstword $(wildcard build-pgo/quake.elf build/quake.elf))
+HOST_HEAP := $(if $(BOARD_ELF),$(shell set -- $$($(CROSS)nm $(BOARD_ELF) 2>/dev/null | \
+               awk '/ __heap_start$$/ {s = $$1} / __heap_end$$/ {e = $$1} END {print s, e}'); \
+               [ -n "$$2" ] && printf '0x%x' $$((0x$$2 - 0x$$1))))
+HOST_HEAP := $(or $(HOST_HEAP),0x638800)
+SDL ?= $(if $(shell PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig pkg-config --exists sdl2 && echo y),1,0)
+HOST_CFLAGS := -m32 -msse2 -mfpmath=sse -O2 -g -fno-pie -std=gnu99 $(if $(HOST_FMA),-mfma) \
+               -DM20 -DM20_HOST -DM20_HEAP=$(HOST_HEAP)u -DM20_MEMSIZE=$(MEMSIZE) -DMINIMUM_MEMORY=$(MEMSIZE) \
+               -DM20_SPAN_DEFAULT=\"$(SPAN)\" -DM20_BASEDIR=\"QUAKE\" -DFF_FS_READONLY=0 \
+               $(if $(HASH),-DM20_FRAMEHASH -Drand=m20_rand) $(if $(ARGS),-DM20_ARGS='"$(ARGS)"') \
+               -fno-aggressive-loop-optimizations -include tools/host/m20_host.h \
+               -Iquakegeneric -Iport -I$(CORE_FW) -I$(CORE_FW)/fatfs \
+               -Wall -Wno-unused-but-set-variable -Wno-unused-variable -Wno-parentheses \
+               -Wno-missing-braces -Wno-dangling-else -Wno-pointer-sign -Wno-trigraphs \
+               -Wno-unused-function -Wno-maybe-uninitialized -Wno-implicit-function-declaration \
+               -Wno-format-truncation -Wno-unused-result -Wno-stringop-overflow -Wno-array-bounds \
+               -Wno-misleading-indentation -Wno-format-overflow -Wno-dangling-pointer -Wno-array-parameter \
+               -U_FORTIFY_SOURCE -fno-stack-protector \
+               $(EXTRA)
+HOST_LIBS := -lm
+ifeq ($(SDL),1)
+HOST_CFLAGS += -DM20_SDL $(shell PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig pkg-config --cflags sdl2)
+HOST_LIBS += $(shell PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig pkg-config --libs sdl2)
+endif
+HOST_SRC := $(QUAKE_SRC) $(wildcard port/*.c) tools/host/m20_host.c $(CORE_FW)/span_emu.c
+HOST_OBJ := $(patsubst %.c,$(HB)/%.o,$(notdir $(HOST_SRC)))
+comma := ,
+HOST_WRAP := $(addprefix -Wl$(comma)--wrap=,main malloc free calloc realloc strdup)
 
-.PHONY: all clean FORCE
+vpath %.c tools/host
+
+host: $(HB)/quake
+
+$(HB)/%.o: %.c Makefile | $(HB)
+	gcc $(HOST_CFLAGS) $(if $(filter quakegeneric/%,$<),$(QUAKE_FLAGS)) -MMD -MP -c $< -o $@
+
+$(HB)/quake: $(HOST_OBJ)
+	gcc -m32 -no-pie -Wl,-Ttext-segment=0x800000 $(HOST_OBJ) $(HOST_WRAP) $(HOST_LIBS) -o $@
+	@echo "$@: heap $(HOST_HEAP) (the board's), SDL=$(SDL)"; size $@
+
+$(HB):
+	mkdir -p $(HB)
+
+$(HB)/args.stamp: FORCE | $(HB)
+	@echo '$(ARGS)|$(SPAN)|$(HASH)' | cmp -s - $@ || echo '$(ARGS)|$(SPAN)|$(HASH)' > $@
+$(HB)/quakegeneric_m20.o $(HB)/span_engine.o: $(HB)/args.stamp
+
+-include $(HOST_OBJ:.o=.d)
+
+clean:
+	rm -rf build build-sf build-prof build-perf build-pgo build-hash build-host*
+
+.PHONY: all clean FORCE host

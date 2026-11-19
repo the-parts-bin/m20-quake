@@ -47,8 +47,10 @@ void D_ViewChanged (void)
 	if (yscale > xscale)
 		scale_for_mip = yscale;
 
-	d_zrowbytes = vid.width * 2;
-	d_zwidth = vid.width;
+	// (the z buffer has the frame's stride, the warp buffer's when warping:
+	// the m20's span engine takes one stride for both)
+	d_zrowbytes = rowbytes * 2;
+	d_zwidth = rowbytes;
 
 	d_pix_min = r_refdef.vrect.width / 320;
 	if (d_pix_min < 1)

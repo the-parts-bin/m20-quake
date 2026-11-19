@@ -35,9 +35,19 @@ int m9b_fs_mount(void);       // ../core/runtime/syscalls.c
 int m9b_fs_use_flash(void);
 int disk_from_flash(void);    // ../core/firmware/diskio.c
 #include "m9b_map.h"
+#include "span_hw.h"    // SPAN_R: the span engine's registers
 
+#ifdef M20_HOST   // the host test harness (tools/host/host.c): its clock and its UART
+uint32_t m20_host_clock(void);
+uint32_t m20_host_uart(void);
+void m20_host_frame(void);
+void m20_host_exit(int code);
+#define CLOCK_CNT     m20_host_clock()
+#define UART_DATA     m20_host_uart()
+#else
 #define CLOCK_CNT     (*(volatile uint32_t *)(M9B_TIMING + 0xCu))
 #define UART_DATA     (*(volatile uint32_t *)M9B_UART)
+#endif
 #define UART_RX_VALID (1u << 8)
 #define VRAM          ((volatile uint32_t *)M9B_VRAM)
 #define VRAM_PALETTE  (VRAM + 512)   // 256 x RGB565, two per word
@@ -80,10 +90,9 @@ void vblank_flip(void) {
     static uint32_t n;
     if (++n % 120u == 0) {
         uint32_t pc;
-        volatile uint32_t *hw = (volatile uint32_t *)0x490000u;   // the span engine
         asm volatile("csrr %0, mepc" : "=r"(pc));
         printf("[pc %08lx engine %08lx pixels %08lx misses %08lx cycles %08lx]\n", (unsigned long)pc,
-               (unsigned long)hw[20], (unsigned long)hw[21], (unsigned long)hw[22], (unsigned long)hw[23]);
+               (unsigned long)SPAN_R(20), (unsigned long)SPAN_R(21), (unsigned long)SPAN_R(22), (unsigned long)SPAN_R(23));
         // The same place as last time: a hang. The registers, and the edge
         // list (r_edge.c's edge_t) from a5 and a6, as R_StepActiveU walks it.
         static uint32_t last, told;
@@ -110,6 +119,9 @@ void vblank_flip(void) {
 #endif
 }
 void M20_Halt(void) {
+#ifdef M20_HOST
+    m20_host_exit(1);   // (Sys_Error)
+#endif
     for (;;) {
     }
 }
@@ -117,7 +129,8 @@ void M20_Halt(void) {
 // ---------------------------------------------------------------------
 // Video
 // ---------------------------------------------------------------------
-static uint16_t *disp[2];  // 64-byte aligned display buffers, RGB565
+static uint16_t *disp[2];  // 2 KB aligned display buffers, RGB565 (the span engine: z sits a
+                           // multiple of 2 KB past the frame)
 static int back;           // the one not on screen (vid.buffer)
 unsigned short d_8to16[256];   // the palette as shown, RGB565 (vid.h, SCR)
 uint32_t m20_pal888[256];      // and as RGB888, for the span engine
@@ -131,14 +144,16 @@ static uint32_t line_16bpp(uintptr_t addr) {
 }
 
 #include "quakedef.h"   // (Cvar_RegisterVariable, for the span engine's switch)
-extern cvar_t r_m20span, r_m20lit;    // port/span_engine.c
+extern cvar_t r_m20span, r_m20lit, r_m20alias, r_m20far;    // port/span_engine.c
 
 void QG_Init(void) {
     Cvar_RegisterVariable(&r_m20span);
     Cvar_RegisterVariable(&r_m20lit);
-    uint8_t *p = malloc(4u * W * H + 64u);
+    Cvar_RegisterVariable(&r_m20alias);
+    Cvar_RegisterVariable(&r_m20far);
+    uint8_t *p = malloc(4u * W * H + 2048u);
     if (!p) Sys_Error("QG_Init: no memory for the display buffers");
-    uintptr_t base = ((uintptr_t)p + 63u) & ~(uintptr_t)63;
+    uintptr_t base = ((uintptr_t)p + 2047u) & ~(uintptr_t)2047;   // (2 x W x H is a multiple of 2 KB too)
     disp[0] = (uint16_t *)base;
     disp[1] = (uint16_t *)(base + 2u * W * H);
     memset(disp[0], 0, 4u * W * H);
@@ -204,6 +219,9 @@ void QG_DrawFrame(void *pixels) {
         VRAM_TABLE[2u * y] = e;
         VRAM_TABLE[2u * y + 1u] = e;
     }
+#ifdef M20_HOST
+    m20_host_frame();   // screenshots from the line table, the script
+#endif
     back ^= 1;
     vid.buffer = vid.conbuffer = disp[back];
 }
@@ -441,6 +459,9 @@ void QG_GetJoyAxes(float *axes) {
 
 void QG_Quit(void) {
     printf("quit\n");
+#ifdef M20_HOST
+    m20_host_exit(0);
+#endif
     M20_Halt();
 }
 
@@ -496,6 +517,13 @@ int main(int argc, char *argv[]) {
             args[nargs++] = p;
         args[nargs] = NULL;
     }
+#ifdef M20_HOST
+    if (argc > 1) {   // the harness's own command line instead
+        nargs = 1;
+        for (int i = 1; i < argc && nargs < 31; i++) args[nargs++] = argv[i];
+        args[nargs] = NULL;
+    }
+#endif
     printf("Quake on the m20:");
     for (int i = 1; i < nargs; i++) printf(" %s", args[i]);
     printf("\n");
@@ -532,8 +560,7 @@ int main(int argc, char *argv[]) {
             // the span engine's counters (../core/rtl/span_engine.v): pixels,
             // texel cache misses, cpu_clk cycles busy
             static uint32_t e_pix, e_miss, e_busy;
-            volatile uint32_t *eng = (volatile uint32_t *)0x490000u;
-            uint32_t p = eng[21], m = eng[22], b = eng[23];
+            uint32_t p = SPAN_R(21), m = SPAN_R(22), b = SPAN_R(23);
             printf("%u frames in %d ms: %d.%d fps, %u misaligned; engine per frame: %u pixels, "
                    "%u misses, %u%% busy\n", (unsigned)frames,
                    (int)((now - report) * 1000.0), (int)(frames / (now - report)),

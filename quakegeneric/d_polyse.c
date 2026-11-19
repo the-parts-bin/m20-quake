@@ -127,6 +127,14 @@ void D_PolysetDraw (void)
 			((CACHE_SIZE - 1) / sizeof(spanpackage_t)) + 1];
 						// one extra because of cache line pretouching
 
+#ifdef M20
+	if (M20_AliasEngine ())
+	{
+		M20_AliasDraw ();	// M20: the span engine (port/span_engine.c)
+		return;
+	}
+	M20_SpanCpuOwn ();
+#endif
 	a_spans = (spanpackage_t *)
 			(((intptr_t)&spans[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
 
@@ -151,6 +159,9 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 	int		i, z;
 	short	*zbuf;
 
+#ifdef M20
+	M20_SpanCpuOwn ();
+#endif
 	for (i=0 ; i<numverts ; i++, fv++)
 	{
 	// valid triangle coordinates for filling can include the bottom and

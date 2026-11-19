@@ -56,6 +56,37 @@ instruction fetch checks with the engine at work (`port/m20_scan.c`). A run
 that finishes without errors proves little: wrong frames at 60 MHz showed up
 only here.
 
+## Host test harness
+
+`make host` builds the same sources as a 32-bit x86 Linux program
+(`build-host/quake`; gcc-multilib, and libsdl2-dev:i386 for the optional
+window), with the span engine's C emulator (`../core/firmware/span_emu.c`)
+in place of the hardware: `tools/host/m20_host.c`. It's linked at 0x800000,
+so that what the engine reads and writes sits in the 8 MB at 0x800000 that
+stand for the SDRAM, and the heap is the board's size (from
+`build-pgo/quake.elf` when it's there): what doesn't fit on the board
+doesn't fit here. The engine's registers go through `SPAN_W`, `SPAN_R` and
+`SDRAM_OFF` (`port/span_hw.h`), the clock and the UART through
+`m20_host_clock` and `m20_host_uart` (`M20_HOST` in
+`port/quakegeneric_m20.c`); the cache and CSR instructions assemble to
+nothing (`tools/host/m20_host.h`). The board's build doesn't change.
+
+It reads `data/sd/QUAKE/id1` (`M20_DATA`), takes Quake's command line, and
+runs on a virtual clock, the same on every run (12 frames a second). Run
+from `quake/`:
+
+    M20_STEPS=1000 M20_SHOTS=100,500 M20_OUT=/tmp/q ./build-host/quake +timedemo demo1 +r_m20far 1
+
+saves frames 100 and 500 as PPM (what the line table shows) and stops
+after frame 1000. `M20_UART='F:text|...'` types on the UART from frame F
+(the terminal's keys), `M20_CMDS='F:cmd|...'` runs console commands,
+`M20_FRAMELOG=1` prints the engine's work a frame, `M20_WINDOW=1` opens a
+window (keys go to the UART); the rest is at the top of `m20_host.c`. At
+the exit it prints `span_emu_stats` (the emulator's checks warn once on
+stderr). `make host HASH=1` (`SPAN=3`) is the frame hash timedemo
+(`build-host-hash/`): the same on every run, but not the board's after the
+first frames (float contraction differs; `HOST_FMA=1` comes closer).
+
 ## Changes to quakegeneric
 
 - `quakegeneric.c`: the hunk's size (`M20_MEMSIZE`, 5.06 MB: the display

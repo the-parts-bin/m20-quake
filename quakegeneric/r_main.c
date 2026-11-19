@@ -500,9 +500,23 @@ void R_MarkLeaves (void)
 R_DrawEntitiesOnList
 =============
 */
-void R_DrawEntitiesOnList (void)
+#ifdef M20
+extern int m20_deferring;	// port/span_engine.c: the CPU's entities put off
+int M20_DeferOn (void);
+void M20_Defer (entity_t *e);
+int M20_Deferred (entity_t ***list);
+#endif
+
+/*
+=============
+R_DrawEntity
+
+currententity, as R_DrawEntitiesOnList's loop did it
+=============
+*/
+static void R_DrawEntity (void)
 {
-	int			i, j;
+	int			j;
 	int			lnum;
 	alight_t	lighting;
 // FIXME: remove and do real lighting
@@ -510,9 +524,81 @@ void R_DrawEntitiesOnList (void)
 	vec3_t		dist;
 	float		add;
 
+	switch (currententity->model->type)
+	{
+	case mod_sprite:
+#ifdef M20
+		if (m20_deferring)
+		{
+			M20_Defer (currententity);	// M20: the CPU's, after the engine's models
+			break;
+		}
+#endif
+		VectorCopy (currententity->origin, r_entorigin);
+		VectorSubtract (r_origin, r_entorigin, modelorg);
+		R_DrawSprite ();
+		break;
+
+	case mod_alias:
+		VectorCopy (currententity->origin, r_entorigin);
+		VectorSubtract (r_origin, r_entorigin, modelorg);
+
+	// see if the bounding box lets us trivially reject, also sets
+	// trivial accept status
+		if (R_AliasCheckBBox ())
+		{
+			j = R_LightPoint (currententity->origin);
+
+			lighting.ambientlight = j;
+			lighting.shadelight = j;
+
+			lighting.plightvec = lightvec;
+
+			for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
+			{
+				if (cl_dlights[lnum].die >= m20_time)
+				{
+					VectorSubtract (currententity->origin,
+									cl_dlights[lnum].origin,
+									dist);
+					add = cl_dlights[lnum].radius - Length(dist);
+
+					if (add > 0)
+						lighting.ambientlight += add;
+				}
+			}
+
+		// clamp lighting so it doesn't overbright as much
+			if (lighting.ambientlight > 128)
+				lighting.ambientlight = 128;
+			if (lighting.ambientlight + lighting.shadelight > 192)
+				lighting.shadelight = 192 - lighting.ambientlight;
+
+			R_AliasDrawModel (&lighting);
+		}
+
+		break;
+
+	default:
+		break;
+	}
+}
+
+/*
+=============
+R_DrawEntitiesOnList
+=============
+*/
+void R_DrawEntitiesOnList (void)
+{
+	int			i;
+
 	if (!r_drawentities.value)
 		return;
 
+#ifdef M20
+	m20_deferring = M20_DeferOn ();
+#endif
 	for (i=0 ; i<cl_numvisedicts ; i++)
 	{
 		currententity = cl_visedicts[i];
@@ -520,59 +606,34 @@ void R_DrawEntitiesOnList (void)
 		if (currententity == &cl_entities[cl.viewentity])
 			continue;	// don't draw the player
 
-		switch (currententity->model->type)
-		{
-		case mod_sprite:
-			VectorCopy (currententity->origin, r_entorigin);
-			VectorSubtract (r_origin, r_entorigin, modelorg);
-			R_DrawSprite ();
-			break;
+		R_DrawEntity ();
+	}
+#ifdef M20
+	m20_deferring = 0;
+#endif
+}
 
-		case mod_alias:
-			VectorCopy (currententity->origin, r_entorigin);
-			VectorSubtract (r_origin, r_entorigin, modelorg);
+#ifdef M20
+/*
+=============
+M20_DrawDeferred
 
-		// see if the bounding box lets us trivially reject, also sets
-		// trivial accept status
-			if (R_AliasCheckBBox ())
-			{
-				j = R_LightPoint (currententity->origin);
-	
-				lighting.ambientlight = j;
-				lighting.shadelight = j;
+The entities R_DrawEntitiesOnList put off (port/span_engine.c): the CPU
+draws them once the engine is done with the buffers
+=============
+*/
+static void M20_DrawDeferred (void)
+{
+	entity_t	**list;
+	int			i, n = M20_Deferred (&list);
 
-				lighting.plightvec = lightvec;
-
-				for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
-				{
-					if (cl_dlights[lnum].die >= m20_time)
-					{
-						VectorSubtract (currententity->origin,
-										cl_dlights[lnum].origin,
-										dist);
-						add = cl_dlights[lnum].radius - Length(dist);
-	
-						if (add > 0)
-							lighting.ambientlight += add;
-					}
-				}
-	
-			// clamp lighting so it doesn't overbright as much
-				if (lighting.ambientlight > 128)
-					lighting.ambientlight = 128;
-				if (lighting.ambientlight + lighting.shadelight > 192)
-					lighting.shadelight = 192 - lighting.ambientlight;
-
-				R_AliasDrawModel (&lighting);
-			}
-
-			break;
-
-		default:
-			break;
-		}
+	for (i=0 ; i<n ; i++)
+	{
+		currententity = list[i];
+		R_DrawEntity ();
 	}
 }
+#endif
 
 /*
 =============
@@ -935,7 +996,7 @@ void R_RenderView_ (void)
 #ifdef M20
 	// M20: static (64 KB on the stack overran it into the heap), and
 	// whole cache lines only, see vid_null.c
-	static scr_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT] __attribute__((aligned(64)));
+	static scr_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT] __attribute__((aligned(2048)));   // (the span engine)
 #else
 	scr_t	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
 #endif
@@ -1004,6 +1065,13 @@ SetVisibilityByPassages ();
 		dp_time1 = Sys_FloatTime ();
 	}
 
+#ifdef M20
+	{
+		void M20_SpanCpuOwn (void);
+		M20_SpanCpuOwn ();	// M20: the buffers back to the CPU (port/span_engine.c)
+		M20_DrawDeferred ();	// and what it put off among the engine's models
+	}
+#endif
 	M20_PERF_BEGIN (M20_PERF_PARTICLES);
 	R_DrawParticles ();
 	M20_PERF_END (M20_PERF_PARTICLES);

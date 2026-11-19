@@ -536,8 +536,16 @@ void R_AliasPrepareUnclippedPoints (void)
 
 	R_AliasTransformAndProjectFinalVerts (fv, pstverts);
 
+#ifdef M20
+	{
+		int M20_AliasEngine (void);
+		if (r_affinetridesc.drawtype && !M20_AliasEngine ())	// M20: (the engine's: no dots)
+			D_PolysetDrawFinalVerts (fv, r_anumverts);
+	}
+#else
 	if (r_affinetridesc.drawtype)
 		D_PolysetDrawFinalVerts (fv, r_anumverts);
+#endif
 
 	r_affinetridesc.pfinalverts = pfinalverts;
 	r_affinetridesc.ptriangles = (mtriangle_t *)
@@ -727,6 +735,17 @@ void R_AliasDrawModel (alight_t *plighting)
 	}
 
 	acolormap = currententity->colormap;
+
+#ifdef M20
+	{
+		int M20_AliasDefer (void);
+		if (M20_AliasDefer ())
+		{
+			r_amodels_drawn--;	// M20: a CPU model while the engine draws: later (port/span_engine.c)
+			return;
+		}
+	}
+#endif
 
 	if (currententity != &cl.viewent)
 		ziscale = (float)0x8000 * (float)0x10000;

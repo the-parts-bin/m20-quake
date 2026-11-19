@@ -16,6 +16,9 @@ enum {
     M20_PERF_ENTS,          // R_DrawEntitiesOnList: alias models and sprites
     M20_PERF_VIEWMODEL,     // R_DrawViewModel: the weapon
     M20_PERF_PARTICLES,     // R_DrawParticles
+    M20_PERF_ADRAW,         // M20_AliasDraw: alias triangles to the engine (setup, FIFO)
+    M20_PERF_AWAIT,         // waiting for the engine before them (the world, a full lightmap ring)
+    M20_PERF_CPUWAIT,       // M20_SpanCpuOwn: waiting for the engine before the CPU draws
     M20_PERF_N
 };
 

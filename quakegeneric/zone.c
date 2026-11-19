@@ -583,6 +583,13 @@ void Cache_Move ( cache_system_t *c)
 //		Con_Printf ("cache_move ok\n");
 
 		Q_memcpy ( new+1, c+1, c->size - sizeof(cache_system_t) );
+#ifdef M20
+		{	// M20: to SDRAM (a model's skin, read in place by the span engine)
+			uintptr_t	a;
+			for (a = (uintptr_t)(new+1) & ~(uintptr_t)63 ; a < (uintptr_t)new + c->size ; a += 64)
+				__asm__ volatile ("cbo.clean (%0)" :: "r"(a) : "memory");
+		}
+#endif
 		new->user = c->user;
 		Q_memcpy (new->name, c->name, sizeof(new->name));
 		Cache_Free (c->user);

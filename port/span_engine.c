@@ -102,10 +102,10 @@ static int32_t origin(float o, float du, float dv, int32_t iu, int32_t iv, int32
 // ---------------------------------------------------------------------
 // The hardware (../core/rtl/span_engine.v): commands into its FIFO at
 // 0x490000 + 4 r (r = 0: a span), the buffers' registers, its status
+// (SPAN_W, SPAN_R, SDRAM_OFF: span_hw.h)
 // ---------------------------------------------------------------------
-#define SPAN_HW      ((volatile uint32_t *)0x490000u)
+#include "span_hw.h"
 #define SPAN_BUSY    (1u << 31)
-#define SDRAM_OFF(p) ((uint32_t)(uintptr_t)(p) - 0x800000u)
 
 // r_m20span, as it was when the frame began: 0 Quake's own drawers, 1 the
 // engine, 2 the C model
@@ -116,7 +116,7 @@ static int mode;
 static int epoch = 1;
 
 static void hw_wait(void) {
-    while (SPAN_HW[20] & SPAN_BUSY) {
+    while (SPAN_R(20) & SPAN_BUSY) {
     }
     epoch++;
 }
@@ -152,6 +152,10 @@ static int hw_lit;          // the engine's lit flag, as last sent (below)
 #define LIT_A (1u << 30)   // span command sub-commands (rtl/span_engine.v)
 #define LIT_B (2u << 30)
 
+static int eng_owns;    // the engine may be drawing; the CPU holds none of the buffers' lines (below)
+static int ztest_on;    // SPAN_ZTEST as last set
+extern cvar_t r_m20alias;
+
 void M20_SpanFrameBegin(void) {
     static int last = -1;
     mode = (int)r_m20span.value;
@@ -167,30 +171,46 @@ void M20_SpanFrameBegin(void) {
     // The palette, when it changed (a flash, a new one)
     if (m20_pal_changed) {
         hw_wait();
-        SPAN_HW[24] = 0;
-        for (int k = 0; k < 256; k++) SPAN_HW[25] = m20_pal888[k];
+        SPAN_W(24, 0);
+        for (int k = 0; k < 256; k++) SPAN_W(25, m20_pal888[k]);
         m20_pal_changed = 0;
     }
     // Unlit, which also empties the texel cache: once a frame, so that a
     // new map's textures are read afresh
-    SPAN_HW[0] = LIT_B;
+    SPAN_W(0, LIT_B);
     hw_lit = 0;
-    SPAN_HW[1] = 0;
-    SPAN_HW[16] = SDRAM_OFF(d_viewbuffer);
-    SPAN_HW[17] = (uint32_t)screenwidth;
-    SPAN_HW[18] = SDRAM_OFF(d_pzbuffer);
-    SPAN_HW[19] = (uint32_t)d_zwidth;
+    SPAN_W(1, 0);
+    // (the engine takes one stride for both, and z a multiple of 2 KB past
+    // the frame: its z cache's index bits are the frame address's)
+    if ((((uintptr_t)d_pzbuffer - (uintptr_t)d_viewbuffer) & 2047u) || d_zwidth != screenwidth)
+        Sys_Error("span engine: z not a multiple of 2 KB past the frame, or another stride");
+    // The bases only while the engine is idle: it sends z lines out at
+    // their frame line + (z base - frame base), so a new frame base under
+    // the last frame's models' z write-backs puts them a display buffer
+    // away from the z buffer (into .bss)
+    if (eng_owns) {
+        M20_PERF_BEGIN(M20_PERF_AWAIT);
+        hw_wait();
+        M20_PERF_END(M20_PERF_AWAIT);
+    }
+    SPAN_W(16, SDRAM_OFF(d_viewbuffer));
+    SPAN_W(17, (uint32_t)screenwidth);
+    SPAN_W(18, SDRAM_OFF(d_pzbuffer));
+    SPAN_W(19, (uint32_t)d_zwidth);
     cache_flush(d_viewbuffer, fb_bytes());
     cache_flush(d_pzbuffer, zb_bytes());
+    eng_owns = 1;
 }
 
-// After them: wait for the engine, and drop the CPU's (stale) copies, so
-// that the models, particles and the rest see what it drew.
+// After them: the engine keeps the buffers for the alias models
+// (r_m20alias; the CPU takes them when it draws, M20_SpanCpuOwn), else
+// they're the CPU's from here: the engine waited for, the CPU's (stale)
+// copies dropped, so that the models, particles and the rest see what it
+// drew.
+void M20_SpanCpuOwn(void);
 void M20_SpanFrameEnd(void) {
-    if (mode != 1) return;
-    hw_wait();
-    cache_inval(d_viewbuffer, fb_bytes());
-    cache_inval(d_pzbuffer, zb_bytes());
+    if (mode != 1 || r_m20alias.value) return;
+    M20_SpanCpuOwn();
 }
 
 // Around a surface the CPU draws itself (sky, water, the background): the
@@ -313,27 +333,27 @@ void M20_SpanSurface(espan_t *spans) {
     if (mode == 1) {
         ((surfcache_t *)((uint8_t *)cacheblock - offsetof(surfcache_t, data)))->m20epoch = epoch;
         if (hw_lit) {
-            SPAN_HW[0] = LIT_B;
+            SPAN_W(0, LIT_B);
             hw_lit = 0;
         }
         // The registers in the engine's order, then the spans
-        SPAN_HW[1] = SDRAM_OFF(cacheblock);
-        SPAN_HW[2] = (uint32_t)eng.tex_w | (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18;
-        SPAN_HW[3] = (uint32_t)eng.s0;
-        SPAN_HW[4] = (uint32_t)eng.su;
-        SPAN_HW[5] = (uint32_t)eng.sv;
-        SPAN_HW[6] = (uint32_t)eng.t0;
-        SPAN_HW[7] = (uint32_t)eng.tu;
-        SPAN_HW[8] = (uint32_t)eng.tv;
-        SPAN_HW[9] = (uint32_t)eng.z0;
-        SPAN_HW[10] = (uint32_t)eng.zu;
-        SPAN_HW[11] = (uint32_t)eng.zv;
-        SPAN_HW[12] = (uint32_t)eng.sadj;
-        SPAN_HW[13] = (uint32_t)eng.tadj;
-        SPAN_HW[14] = (uint32_t)eng.smax;
-        SPAN_HW[15] = (uint32_t)eng.tmax;
+        SPAN_W(1, SDRAM_OFF(cacheblock));
+        SPAN_W(2, (uint32_t)eng.tex_w | (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18);
+        SPAN_W(3, (uint32_t)eng.s0);
+        SPAN_W(4, (uint32_t)eng.su);
+        SPAN_W(5, (uint32_t)eng.sv);
+        SPAN_W(6, (uint32_t)eng.t0);
+        SPAN_W(7, (uint32_t)eng.tu);
+        SPAN_W(8, (uint32_t)eng.tv);
+        SPAN_W(9, (uint32_t)eng.z0);
+        SPAN_W(10, (uint32_t)eng.zu);
+        SPAN_W(11, (uint32_t)eng.zv);
+        SPAN_W(12, (uint32_t)eng.sadj);
+        SPAN_W(13, (uint32_t)eng.tadj);
+        SPAN_W(14, (uint32_t)eng.smax);
+        SPAN_W(15, (uint32_t)eng.tmax);
         for (espan_t *p = spans; p; p = p->pnext)
-            SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
+            SPAN_W(0, (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u);
 #ifdef M20_SCAN   // (port/m20_scan.c: with the engine at work)
         { extern void M20_ScanStep(void); M20_ScanStep(); }
 #endif
@@ -427,27 +447,27 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
             mt->m20clean = 1;
         }
         ((surfcache_t *)pface->cachespots[0])->m20epoch = epoch;
-        SPAN_HW[0] = LIT_B | 1u << 27 | (uint32_t)lh << 22 | (uint32_t)lw << 17 | SDRAM_OFF(lm) >> 6;
-        SPAN_HW[0] = LIT_A | (uint32_t)eng.lshift << 26 | (uint32_t)eng.th_log2 << 22 |
-                     (uint32_t)eng.tw_log2 << 18 | (uint32_t)eng.toff << 9 | (uint32_t)eng.soff;
+        SPAN_W(0, LIT_B | 1u << 27 | (uint32_t)lh << 22 | (uint32_t)lw << 17 | SDRAM_OFF(lm) >> 6);
+        SPAN_W(0, LIT_A | (uint32_t)eng.lshift << 26 | (uint32_t)eng.th_log2 << 22 |
+                     (uint32_t)eng.tw_log2 << 18 | (uint32_t)eng.toff << 9 | (uint32_t)eng.soff);
         hw_lit = 1;
-        SPAN_HW[1] = SDRAM_OFF(tex);
-        SPAN_HW[2] = (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18;
-        SPAN_HW[3] = (uint32_t)eng.s0;
-        SPAN_HW[4] = (uint32_t)eng.su;
-        SPAN_HW[5] = (uint32_t)eng.sv;
-        SPAN_HW[6] = (uint32_t)eng.t0;
-        SPAN_HW[7] = (uint32_t)eng.tu;
-        SPAN_HW[8] = (uint32_t)eng.tv;
-        SPAN_HW[9] = (uint32_t)eng.z0;
-        SPAN_HW[10] = (uint32_t)eng.zu;
-        SPAN_HW[11] = (uint32_t)eng.zv;
-        SPAN_HW[12] = (uint32_t)eng.sadj;
-        SPAN_HW[13] = (uint32_t)eng.tadj;
-        SPAN_HW[14] = (uint32_t)eng.smax;
-        SPAN_HW[15] = (uint32_t)eng.tmax;
+        SPAN_W(1, SDRAM_OFF(tex));
+        SPAN_W(2, (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18);
+        SPAN_W(3, (uint32_t)eng.s0);
+        SPAN_W(4, (uint32_t)eng.su);
+        SPAN_W(5, (uint32_t)eng.sv);
+        SPAN_W(6, (uint32_t)eng.t0);
+        SPAN_W(7, (uint32_t)eng.tu);
+        SPAN_W(8, (uint32_t)eng.tv);
+        SPAN_W(9, (uint32_t)eng.z0);
+        SPAN_W(10, (uint32_t)eng.zu);
+        SPAN_W(11, (uint32_t)eng.zv);
+        SPAN_W(12, (uint32_t)eng.sadj);
+        SPAN_W(13, (uint32_t)eng.tadj);
+        SPAN_W(14, (uint32_t)eng.smax);
+        SPAN_W(15, (uint32_t)eng.tmax);
         for (espan_t *p = spans; p; p = p->pnext)
-            SPAN_HW[0] = (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u;
+            SPAN_W(0, (uint32_t)p->count << 19 | (uint32_t)p->v << 10 | (uint32_t)p->u);
 #ifdef M20_SCAN   // (port/m20_scan.c: with the engine at work)
         { extern void M20_ScanStep(void); M20_ScanStep(); }
 #endif
@@ -468,4 +488,344 @@ void M20_SpanSurfaceLit(espan_t *spans, msurface_t *pface, int miplevel) {
         pix_zb = d_pzbuffer + p->v * d_zwidth + p->u;
         sc_span_lit(&eng, p->u, p->v, p->count);
     }
+}
+
+// ---------------------------------------------------------------------
+// After the world: who has the frame and z buffers
+// ---------------------------------------------------------------------
+// With r_m20alias the engine goes on drawing after the world (the alias
+// models), so the CPU doesn't wait for it there: whatever the CPU draws
+// into the 3D view next (sprites, particles, a model the engine doesn't
+// take) waits first and drops its stale lines of both buffers
+// (M20_SpanCpuOwn); an engine model after that has the CPU's lines
+// written back first (eng_own). The depth test is a direct register, as
+// is the z base: both changed only while the engine is idle (writing the
+// z base drops the z cache, dirty or not).
+cvar_t r_m20alias = {"r_m20alias", "1"};
+
+void M20_SpanCpuOwn(void) {
+    if (mode != 1 || !eng_owns) return;
+    M20_PERF_BEGIN(M20_PERF_CPUWAIT);
+    hw_wait();
+    M20_PERF_END(M20_PERF_CPUWAIT);
+    if (ztest_on) {
+        SPAN_W(26, 0);
+        ztest_on = 0;
+    }
+    cache_inval(d_viewbuffer, fb_bytes());
+    cache_inval(d_pzbuffer, zb_bytes());
+    eng_owns = 0;
+}
+
+static void eng_own(void) {
+    if (eng_owns) return;
+    cache_flush(d_viewbuffer, fb_bytes());
+    cache_flush(d_pzbuffer, zb_bytes());
+    eng_owns = 1;
+}
+
+static void ztest(void) {
+    if (ztest_on) return;
+    M20_PERF_BEGIN(M20_PERF_AWAIT);
+    hw_wait();                             // (the world's spans done: no depth test for them)
+    M20_PERF_END(M20_PERF_AWAIT);
+    SPAN_W(18, SDRAM_OFF(d_pzbuffer));   // the z cache emptied
+    SPAN_W(26, 1);
+    ztest_on = 1;
+}
+
+// ---------------------------------------------------------------------
+// Alias models (the monsters, the weapon) in the engine
+// ---------------------------------------------------------------------
+// D_PolysetDraw's triangles (r_affinetridesc), as TRX draws its faces
+// (trx/src/specific/s_hwr_span.h): per triangle the planes of 1/z, s/z and
+// t/z on the screen from its three vertices (exact: the engine maps the
+// skin with perspective, where Quake's own drawer is affine), the light
+// (Gouraud: each vertex's, as the engine's brightness) fitted as
+// a + b s + c t, exact for a triangle, and sampled into a small lightmap
+// (bilinear gives the plane back), and the rows by the engine's edge walk
+// (EDGE). The skin is a lit texture of any width (LIT_A's tw_log2 15: rows
+// tex_w apart, s and t not wrapped), read in place in the model (model.c
+// cleans it to SDRAM when it's loaded, zone.c when the cache moves it),
+// from the triangle's corner. (Padding each skin's rows to a power of 2
+// instead cost 0.7 MB, which pushed models out of the cache.) The depth
+// test on, against the world's z.
+// Models drawn by Quake's subdivision (small, wholly on screen) and with
+// a player's colour translation stay on the CPU.
+extern void *acolormap;   // r_alias.c
+
+// r_m20far 1: the models Quake would subdivide (small, wholly on screen:
+// far monsters, torches) to the engine too (per triangle setup on the CPU
+// either way: which is faster depends on the scene)
+cvar_t r_m20far = {"r_m20far", "0"};
+
+int M20_AliasEngine(void) {
+    return mode == 1 && r_m20alias.value && (!r_affinetridesc.drawtype || r_m20far.value) &&
+           acolormap == (void *)vid.colormap && r_affinetridesc.skinwidth < 4096;   // (tex_w: 12 bits)
+}
+
+// While the engine draws the models, what the CPU would draw among them
+// (sprites, the models above it doesn't take) waits for the end of the
+// list, after the view model (r_main.c, M20_DrawDeferred): one hand-over
+// of the buffers a frame, before the particles, instead of one for each
+// of them and back. All of them test and write z, so the order doesn't
+// change the picture.
+int m20_deferring;                       // set by R_DrawEntitiesOnList
+static entity_t *m20_later[MAX_VISEDICTS];
+static int m20_nlater;
+
+int M20_DeferOn(void) {
+    m20_nlater = 0;
+    return mode == 1 && r_m20alias.value;
+}
+
+void M20_Defer(entity_t *e) {
+    if (m20_nlater < MAX_VISEDICTS) m20_later[m20_nlater++] = e;
+}
+
+// R_AliasDrawModel, its setup done: a model for the CPU, put off?
+int M20_AliasDefer(void) {
+    if (!m20_deferring || M20_AliasEngine()) return 0;
+    M20_Defer(currententity);
+    return 1;
+}
+
+int M20_Deferred(entity_t ***list) {   // (and empties the list: taken once)
+    int n = m20_nlater;
+    m20_nlater = 0;
+    *list = m20_later;
+    return n;
+}
+
+#define LM_RING 16384
+static uint8_t lm_ring[LM_RING] __attribute__((aligned(64)));
+static uint32_t lm_pos;
+static int32_t eng_clip_l = -1, eng_clip_r = -1;   // EDGE's window, as last sent
+
+typedef struct { int32_t px, py; float s, t, w, l; } avert_t;
+typedef struct { int32_t y0, y1, x, dx; } aedge_t;
+
+static inline int32_t floor_i(float f) {
+    int32_t i = (int32_t)f;
+    return i - (f < (float)i);
+}
+
+static void alias_tri(const avert_t *v, uint32_t skin, uint32_t skin_w) {
+    float x1 = (float)(v[1].px - v[0].px), y1 = (float)(v[1].py - v[0].py);
+    float x2 = (float)(v[2].px - v[0].px), y2 = (float)(v[2].py - v[0].py);
+    float det = x1 * y2 - x2 * y1;
+    if (fabsf(det) < 1.0f) return;   // (under half a pixel)
+    float smin = v[0].s, smax = v[0].s, tmin = v[0].t, tmax = v[0].t;
+    for (int i = 1; i < 3; i++) {
+        smin = v[i].s < smin ? v[i].s : smin;
+        smax = v[i].s > smax ? v[i].s : smax;
+        tmin = v[i].t < tmin ? v[i].t : tmin;
+        tmax = v[i].t > tmax ? v[i].t : tmax;
+    }
+    int32_t umin = floor_i(smin), vmin = floor_i(tmin), umax = floor_i(smax), vmax = floor_i(tmax);
+    if (umin < 0) umin = 0;
+    if (vmin < 0) vmin = 0;
+    if (umax < umin) umax = umin;
+    if (vmax < vmin) vmax = vmin;
+    float id = 1.0f / det;
+#define PLANE(q0, q1, q2, o, dx, dy) do { \
+        float d1_ = (q1) - (q0), d2_ = (q2) - (q0); \
+        dx = (d1_ * y2 - d2_ * y1) * id; \
+        dy = (x1 * d2_ - x2 * d1_) * id; \
+        o = (q0) - (float)v[0].px * dx - (float)v[0].py * dy; \
+    } while (0)
+    float zo, zdx, zdy, so, sdx, sdy, to, tdx, tdy;
+    PLANE(v[0].w, v[1].w, v[2].w, zo, zdx, zdy);
+    PLANE((v[0].s - umin) * v[0].w, (v[1].s - umin) * v[1].w, (v[2].s - umin) * v[2].w, so, sdx, sdy);
+    PLANE((v[0].t - vmin) * v[0].w, (v[1].t - vmin) * v[1].w, (v[2].t - vmin) * v[2].w, to, tdx, tdy);
+#undef PLANE
+    eng.es = exponent(so, sdx, sdy);
+    eng.et = exponent(to, tdx, tdy);
+    eng.su = fix(sdx, eng.es);
+    eng.sv = fix(sdy, eng.es);
+    eng.s0 = origin(so, sdx, sdy, eng.su, eng.sv, eng.es);
+    eng.tu = fix(tdx, eng.et);
+    eng.tv = fix(tdy, eng.et);
+    eng.t0 = origin(to, tdx, tdy, eng.tu, eng.tv, eng.et);
+    eng.zu = fix(zdx, 31);
+    eng.zv = fix(zdy, 31);
+    eng.z0 = origin(zo, zdx, zdy, eng.zu, eng.zv, 31);
+    eng.smax = ((umax - umin) << 16) | 0xFFFF;
+    eng.tmax = ((vmax - vmin) << 16) | 0xFFFF;
+    eng.soff = 0;   // (the texture from the triangle's corner: tex_base)
+    eng.toff = 0;
+
+    // The light: l = a + b s + c t through the three vertices (s, t from
+    // umin, vmin); a line in the skin: their mean
+    float la, lb = 0.0f, lc = 0.0f;
+    {
+        float s1 = v[1].s - v[0].s, t1 = v[1].t - v[0].t, s2 = v[2].s - v[0].s, t2 = v[2].t - v[0].t;
+        float dd = s1 * t2 - s2 * t1;
+        if (fabsf(dd) > 1e-3f) {
+            float l1 = v[1].l - v[0].l, l2 = v[2].l - v[0].l, idd = 1.0f / dd;
+            lb = (l1 * t2 - l2 * t1) * idd;
+            lc = (s1 * l2 - s2 * l1) * idd;
+            la = v[0].l - lb * (v[0].s - umin) - lc * (v[0].t - vmin);
+        } else {
+            la = (v[0].l + v[1].l + v[2].l) * (1.0f / 3.0f);
+        }
+    }
+    // The lightmap: the plane every 2^k texels (bilinear gives it back), the
+    // coarsest grid that keeps it in 0..255, else a finer one, clamped
+    int32_t ext = umax - umin > vmax - vmin ? umax - umin : vmax - vmin, k = 0;
+    while ((ext >> k) > 1 && k < 7) k++;
+    int32_t lw, lh, q0, qs, qt, clamp = 0;
+    for (;;) {
+        lw = ((umax - umin) >> k) + 2;
+        lh = ((vmax - vmin) >> k) + 2;
+        q0 = (int32_t)(la * 65536.0f) + 32768;
+        qs = (int32_t)(lb * (float)(65536 << k));
+        qt = (int32_t)(lc * (float)(65536 << k));
+        int32_t c1 = q0 + qs * (lw - 1), c2 = q0 + qt * (lh - 1), c3 = c1 + qt * (lh - 1);
+        int32_t qmin = q0 < c1 ? q0 : c1, qmax = q0 < c1 ? c1 : q0;
+        qmin = c2 < qmin ? c2 : qmin;
+        qmax = c2 > qmax ? c2 : qmax;
+        qmin = c3 < qmin ? c3 : qmin;
+        qmax = c3 > qmax ? c3 : qmax;
+        if (qmin >= 0 && qmax < (256 << 16) || clamp) break;
+        k = 0;   // a finer grid (up to 8 x 8), clamped
+        while ((ext >> k) > 6) k++;
+        clamp = 1;
+    }
+    uint32_t bytes = (uint32_t)(lw * lh + 63) & ~63u;
+    if (lm_pos + bytes > LM_RING) {   // the ring full: reused once the engine has loaded them all
+        M20_PERF_BEGIN(M20_PERF_AWAIT);
+        hw_wait();
+        M20_PERF_END(M20_PERF_AWAIT);
+        lm_pos = 0;
+    }
+    uint8_t *lm = lm_ring + lm_pos;
+    lm_pos += bytes;
+    uint8_t *row = lm;
+    for (int32_t j = 0; j < lh; j++, q0 += qt, row += lw) {
+        int32_t q = q0;
+        for (int32_t i = 0; i < lw; i++, q += qs) {
+            int32_t s = q >> 16;
+            row[i] = (uint8_t)(s < 0 ? 0 : s > 255 ? 255 : s);
+        }
+    }
+    cache_clean(lm, (uint32_t)(lw * lh));
+
+    SPAN_W(0, LIT_B | 1u << 27 | (uint32_t)lh << 22 | (uint32_t)lw << 17 | SDRAM_OFF(lm) >> 6);
+    SPAN_W(0, LIT_A | (uint32_t)k << 26 | 15u << 22 | 15u << 18);   // (any width, no wrap; soff, toff 0)
+    SPAN_W(1, skin + (uint32_t)vmin * skin_w + (uint32_t)umin);
+    SPAN_W(2, skin_w | (uint32_t)eng.es << 12 | (uint32_t)eng.et << 18);
+    SPAN_W(3, (uint32_t)eng.s0);
+    SPAN_W(4, (uint32_t)eng.su);
+    SPAN_W(5, (uint32_t)eng.sv);
+    SPAN_W(6, (uint32_t)eng.t0);
+    SPAN_W(7, (uint32_t)eng.tu);
+    SPAN_W(8, (uint32_t)eng.tv);
+    SPAN_W(9, (uint32_t)eng.z0);
+    SPAN_W(10, (uint32_t)eng.zu);
+    SPAN_W(11, (uint32_t)eng.zv);
+    SPAN_W(12, 0);
+    SPAN_W(13, 0);
+    SPAN_W(14, (uint32_t)eng.smax);
+    SPAN_W(15, (uint32_t)eng.tmax);
+
+    // The rows: the edges going down on one side, up on the other; EDGE
+    // per pair, an edge the engine already has going on where it got to.
+    // (Rows y0 .. y1 - 1, each from x to x of the other edge, exclusive:
+    // neighbouring triangles meet without gaps or overlaps.)
+    aedge_t el[3], er[3];
+    int32_t nl = 0, nr = 0, ytop = 1 << 20, ybot = -(1 << 20);
+    for (int i = 0; i < 3; i++) {
+        const avert_t *a = &v[i], *b = &v[i + 1 < 3 ? i + 1 : 0];
+        if (a->py == b->py) continue;
+        aedge_t *e;
+        if (a->py < b->py) {
+            e = &er[nr++];
+        } else {
+            const avert_t *t = a;
+            a = b;
+            b = t;
+            e = &el[nl++];
+        }
+        e->y0 = a->py;
+        e->y1 = b->py;
+        e->dx = ((b->px - a->px) << 16) / (b->py - a->py);
+        e->x = (a->px << 16) + 0x8000;
+        ytop = a->py < ytop ? a->py : ytop;
+        ybot = b->py > ybot ? b->py : ybot;
+    }
+    int32_t clip_t = r_refdef.vrect.y, clip_b = r_refdef.vrect.y + r_refdef.vrect.height - 1;
+    int32_t clip_l = r_refdef.vrect.x, clip_r = r_refdef.vrect.x + r_refdef.vrect.width - 1;
+    int32_t ys = ytop < clip_t ? clip_t : ytop, ye = ybot > clip_b + 1 ? clip_b + 1 : ybot;
+    if (!nl || !nr || ys >= ye) return;
+    for (int i = 1; i < nl; i++)   // (by y0: two at most)
+        if (el[i].y0 < el[0].y0) { aedge_t t = el[0]; el[0] = el[i]; el[i] = t; }
+    for (int i = 1; i < nr; i++)
+        if (er[i].y0 < er[0].y0) { aedge_t t = er[0]; er[0] = er[i]; er[i] = t; }
+    const aedge_t *l = el, *le = el + nl, *r = er, *re = er + nr, *sl = NULL, *sr = NULL;
+    for (int32_t y = ys; y < ye;) {
+        while (y >= l->y1 && ++l < le) {
+        }
+        while (y >= r->y1 && ++r < re) {
+        }
+        if (l >= le || r >= re) break;
+        if (y < l->y0 || y < r->y0) {   // (not a triangle's: can't happen)
+            y++;
+            sl = sr = NULL;
+            continue;
+        }
+        int32_t yend = l->y1 < r->y1 ? l->y1 : r->y1;
+        yend = yend > ye ? ye : yend;
+        uint32_t fc = clip_l != eng_clip_l || clip_r != eng_clip_r, fl = l != sl, fr = r != sr;
+        SPAN_W(0, 3u << 30 | fl << 29 | fr << 28 | fc << 27 | (uint32_t)y << 9 | (uint32_t)yend);
+        if (fc) {
+            SPAN_W(0, (uint32_t)clip_r << 16 | (uint32_t)clip_l);
+            eng_clip_l = clip_l;
+            eng_clip_r = clip_r;
+        }
+        if (fl) {
+            SPAN_W(0, (uint32_t)(l->x + l->dx * (y - l->y0)));
+            SPAN_W(0, (uint32_t)l->dx);
+        }
+        if (fr) {
+            SPAN_W(0, (uint32_t)(r->x + r->dx * (y - r->y0)));
+            SPAN_W(0, (uint32_t)r->dx);
+        }
+        sl = l;
+        sr = r;
+        y = yend;
+    }
+}
+
+// D_PolysetDraw's triangles, when M20_AliasEngine says so
+void M20_AliasDraw(void) {
+    eng_own();
+    ztest();
+    M20_PERF_BEGIN(M20_PERF_ADRAW);
+    hw_lit = 1;   // (the next unlit surface sends LIT_B again)
+    // The skin in the model (in SDRAM since it was loaded: model.c)
+    uint32_t skin = SDRAM_OFF(r_affinetridesc.pskin), skin_w = (uint32_t)r_affinetridesc.skinwidth;
+    finalvert_t *pfv = r_affinetridesc.pfinalverts;
+    mtriangle_t *ptri = r_affinetridesc.ptriangles;
+    for (int n = 0; n < r_affinetridesc.numtriangles; n++, ptri++) {
+        finalvert_t *f[3] = {pfv + ptri->vertindex[0], pfv + ptri->vertindex[1], pfv + ptri->vertindex[2]};
+        int xdenom = (f[0]->v[1] - f[1]->v[1]) * (f[0]->v[0] - f[2]->v[0]) -
+                     (f[0]->v[0] - f[1]->v[0]) * (f[0]->v[1] - f[2]->v[1]);
+        if (xdenom >= 0) continue;   // (facing away: as D_DrawNonSubdiv)
+        avert_t v[3];
+        for (int i = 0; i < 3; i++) {
+            int s = f[i]->v[2];
+            if (!ptri->facesfront && (f[i]->flags & ALIAS_ONSEAM)) s += r_affinetridesc.seamfixupX16;
+            v[i].px = f[i]->v[0];
+            v[i].py = f[i]->v[1];
+            v[i].s = (float)s * (1.0f / 65536.0f);
+            v[i].t = (float)f[i]->v[3] * (1.0f / 65536.0f);
+            float w = (float)f[i]->v[5] * (1.0f / 2147483648.0f);   // (the weapon's z is x 3: kept under 1)
+            v[i].w = w < 0.9999f ? w : 0.9999f;
+            float l = (float)f[i]->v[4] * (1.0f / 64.0f);   // (v[4] is a darkness: colormap row 32 = 128)
+            v[i].l = l < 0.0f ? 0.0f : l > 255.0f ? 255.0f : l;
+        }
+        alias_tri(v, skin, skin_w);
+    }
+    M20_PERF_END(M20_PERF_ADRAW);
 }

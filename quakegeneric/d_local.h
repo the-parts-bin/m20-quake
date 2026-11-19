@@ -120,4 +120,7 @@ void M20_SpanSurfaceBuilt (const void *data, int bytes);
 void M20_SpanCacheReuse (surfcache_t *sc);
 int M20_SpanLit (msurface_t *pface, int miplevel);
 void M20_SpanSurfaceLit (espan_t *spans, msurface_t *pface, int miplevel);
+void M20_SpanCpuOwn (void);    // the CPU draws into the 3D view next
+int M20_AliasEngine (void);    // D_PolysetDraw's triangles to the engine?
+void M20_AliasDraw (void);
 #endif
