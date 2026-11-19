@@ -8,7 +8,8 @@ Nano 20K).
 **Status:** it plays, at 640 × 360 (doubled to the 1280 × 720 picture),
 with sound (Quake's mixer at 11025 Hz, played at 48 kHz), USB keyboards
 and mice or the serial terminal's keys, and the span engine drawing the
-world's surfaces, lit per pixel in RGB565. `timedemo demo1` runs at about
+world's surfaces, lit per pixel in RGB565, and the models (monsters, items,
+the weapon: `r_m20alias`, below). `timedemo demo1` runs at about
 12 fps (demo2 12.8, demo3 12.0); at 320 × 240 it was about 18. It builds
 with `make` (profile-guided, `build-pgo/`; `make PGO=0` without the
 profile, `make FPU=0` soft float), loads through the core's serial loader
@@ -24,7 +25,7 @@ shareware pak in the SPI flash (`tools/mkpak.py`, then
 |---|---|
 | `quakegeneric/` | quakegeneric's engine sources at `UPSTREAM_COMMIT`, with changes marked `M20` |
 | `port/quakegeneric_m20.c` | the platform layer: video, palette, keys (UART and USB), time, main loop, screenshots and profiles over the UART |
-| `port/span_engine.c` | the span engine's driver: each surface's gradients as the engine's fixed-point registers, its spans as commands; also the C model (`r_m20span 2`) |
+| `port/span_engine.c` | the span engine's driver: each surface's gradients as the engine's fixed-point registers, its spans as commands; also the C model (`r_m20span 2`); the alias models' triangles (below) |
 | `port/snd_m20.c` | sound: Quake's mixer into a ring, resampled into the hardware's halves on the audio interrupt |
 | `port/m20_math.h` | maps the double math functions to their float versions (included ahead of every Quake source) |
 | `port/m20_pgo.c`, `tools/pgo_merge.py` | profile-guided builds: `make PGO=gen` counts branches on the board and prints them at the timedemo's end |
@@ -55,6 +56,29 @@ the engine's spans with the C model, and `SCAN=1` runs memory, arithmetic and
 instruction fetch checks with the engine at work (`port/m20_scan.c`). A run
 that finishes without errors proves little: wrong frames at 60 MHz showed up
 only here.
+
+## Models in the span engine
+
+With `r_m20alias 1` (the default) the alias models' triangles go to the
+span engine too (`M20_AliasDraw` in `port/span_engine.c`): per triangle the
+planes of 1/z, s/z and t/z (the skin mapped with perspective, where
+Quake's own drawer is affine), the Gouraud light fitted as a plane and
+sampled into a small lightmap (bilinear gives the plane back), the rows as
+EDGE commands, and the depth test against the world's z. The skin is read
+where Quake loaded it, as a lit texture of any width (core's LIT_A
+`tw_log2` 15: rows `tex_w` apart), so it has to be in SDRAM: `model.c`
+cleans a model from the cache when it's loaded, `zone.c` when the cache
+moves it. Models drawn by Quake's subdivision (small, wholly on screen)
+stay on the CPU unless `r_m20far 1`, and so do models with a player's
+colours. What the CPU draws among the models (sprites, particles, its own
+models) waits until the engine is done (`M20_AliasDefer`, `r_main.c`).
+
+The engine addresses z by the frame (core README): its z lines go out at
+their frame line + (z base − frame base). So the bases are only written
+while it's idle: `M20_SpanFrameBegin` waits first, else the last frame's
+model depths, still being written back when the frame base moved to the
+other display buffer, landed in `.bss` (traps in the client and sound code
+within minutes of play).
 
 ## Host test harness
 
