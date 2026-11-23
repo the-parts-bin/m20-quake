@@ -1200,6 +1200,15 @@ void M_Options_Key (int k)
 	switch (k)
 	{
 	case K_ESCAPE:
+#ifdef M20
+		// M20: the settings (and key bindings, whose menu returns here) go
+		// to config.cfg on leaving the menu: Quake only wrote it on a clean
+		// shutdown, and the board is just switched off
+		{
+			extern void Host_WriteConfiguration (void);
+			Host_WriteConfiguration ();
+		}
+#endif
 		M_Menu_Main_f ();
 		break;
 

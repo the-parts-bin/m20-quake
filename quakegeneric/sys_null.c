@@ -178,6 +178,11 @@ void Sys_Printf (char *fmt, ...)
 
 void Sys_Quit (void)
 {
+#ifdef M20
+	// M20: Host_Shutdown never runs, and it's what writes config.cfg
+	extern void Host_WriteConfiguration (void);
+	Host_WriteConfiguration ();
+#endif
 	exit (0);
 }
 

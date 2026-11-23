@@ -641,6 +641,38 @@ void Draw_FadeScreen (void)
 	S_ExtraUpdate ();
 	VID_LockBuffer ();
 
+#ifdef M20
+	// M20: the colour read once (SCR() is a table look-up, and the stores
+	// could alias it), and two pixels a store where both are darkened: in
+	// each group of four, pixel t is kept (0 on even rows, 2 on odd ones).
+	// The same pattern as below; this took over half of a frame with the
+	// menu up at 640 x 360.
+	if (sizeof (scr_t) == 2 && !(vid.width & 3) && !(vid.rowbytes & 1)
+		&& !((uintptr_t) vid.buffer & 3))
+	{
+		typedef uint32_t __attribute__((may_alias)) pair_t;
+		scr_t	c = SCR(0);
+		uint32_t	c2 = (uint32_t) c | (uint32_t) c << 16;
+
+		for (y=0 ; y<vid.height ; y++)
+		{
+			pbuf = vid.buffer + vid.rowbytes*y;
+			if (y & 1)
+				for (x=0 ; x<vid.width ; x+=4)
+				{
+					*(pair_t *) &pbuf[x] = c2;		// 0, 1
+					pbuf[x+3] = c;
+				}
+			else
+				for (x=0 ; x<vid.width ; x+=4)
+				{
+					pbuf[x+1] = c;
+					*(pair_t *) &pbuf[x+2] = c2;	// 2, 3
+				}
+		}
+	}
+	else
+#endif
 	for (y=0 ; y<vid.height ; y++)
 	{
 		int	t;

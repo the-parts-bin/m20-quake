@@ -794,6 +794,24 @@ void SCR_BringDownConsole (void)
 }
 
 
+#ifdef M20
+// M20: the tile in the screen's border around the 3D view (scr_vrect)
+static void SCR_TileClearBorder (void)
+{
+	const vrect_t	*v = &scr_vrect;
+	int				bottom = v->y + v->height, right = v->x + v->width;
+
+	if (v->y > 0)
+		Draw_TileClear (0, 0, vid.width, v->y);
+	if (bottom < vid.height)
+		Draw_TileClear (0, bottom, vid.width, vid.height - bottom);
+	if (v->x > 0)
+		Draw_TileClear (0, v->y, v->x, v->height);
+	if (right < vid.width)
+		Draw_TileClear (right, v->y, vid.width - right, v->height);
+}
+#endif
+
 /*
 ==================
 SCR_UpdateScreen
@@ -875,6 +893,15 @@ void SCR_UpdateScreen (void)
 	if (scr_fullupdate++ < vid.numpages)
 	{	// clear the entire screen
 		scr_copyeverything = 1;
+#ifdef M20
+		// M20: with a map loaded the 3D view covers scr_vrect and is drawn
+		// over it below, so only the border around it needs the tile. The
+		// menu asks for a full update every frame (M_Draw), and the whole
+		// 640 x 360 screen's tile took 40% of each frame then.
+		if (cl.worldmodel && cls.signon == SIGNONS && !lcd_x.value)
+			SCR_TileClearBorder ();
+		else
+#endif
 		Draw_TileClear (0,0,vid.width,vid.height);
 		Sbar_Changed ();
 	}
