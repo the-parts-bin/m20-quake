@@ -210,6 +210,13 @@ void Sys_Sleep (void)
 
 void Sys_SendKeyEvents (void)
 {
+#ifdef M20
+	// M20: the keys (UART, USB) go to Key_Event here too, not only in
+	// IN_Commands each frame: SCR_ModalMessage ("start a new game?") loops
+	// on this until it sees y, n or Escape, and hung with it empty
+	extern void IN_Commands (void);
+	IN_Commands ();
+#endif
 }
 
 void Sys_HighFPPrecision (void)
