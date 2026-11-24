@@ -162,6 +162,10 @@ void M20_SpanFrameBegin(void) {
     // The surface cache's blocks are surfaces or lightmaps depending on
     // the mode: a new mode starts it afresh
     int now = mode * 2 + (r_m20lit.value != 0);
+    if (last == -1) {   // the first frame: the depth test as ztest_on says,
+        SPAN_W(26, 0);  // whatever ran before left it (no reset clears it)
+        ztest_on = 0;
+    }
     if (now != last) {
         if (last == 1 * 2 + 1 || last == 1 * 2) hw_wait();
         D_FlushCaches();
