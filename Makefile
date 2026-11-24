@@ -49,6 +49,11 @@ endif
 ifdef SCAN
 MEMSIZE ?= 0x4D0000
 endif
+# (PROFILE=1: with 0x510000 the profiler's buffers left no room for the
+# display buffers, "QG_Init: no memory for the display buffers")
+ifdef PROFILE
+MEMSIZE ?= 0x480000
+endif
 MEMSIZE ?= 0x510000
 STACK ?= 0x40000
 # r_m20span at start-up: 0 Quake's own span drawers, 1 the engine, 2 the C model

@@ -8,8 +8,10 @@ The SD card holds the whole shareware `pak0.pak` (18 MB, from Quake 1.06's
 shareware release, `quake106.zip`; its `resource.1` unpacks with 7z),
 rewritten with every file 32-bit aligned (`tools/alignpak.py`: 64 bytes;
 the stock pak has half of them at odd offsets). `../sdcard/make_sdcard.sh`
-in m20-system builds the whole card that way; or by hand, written through
-the board without taking the card out:
+in m20-system builds the whole card that way (from
+`data/download/res/ID1/PAK0.PAK`, else `data/download/quake106.zip`, or
+its `--pak`; `--args LINE` writes `m20args.txt`); or by hand, written
+through the board without taking the card out:
 
     mkdir -p data/sd/QUAKE/id1 && python3 tools/alignpak.py <path>/ID1/PAK0.PAK data/sd/QUAKE/id1/pak0.pak
     ../core/tools/sdput/sdput.py sync data/sd
@@ -17,6 +19,8 @@ the board without taking the card out:
 (about 4 minutes). Without `QUAKE/m20args.txt` Quake starts as on a PC, with
 its demo loop (Esc for the menu; from the flash disk, below, E1M1); for the
 benchmark, `make ARGS="+timedemo demo1"` builds that command line in.
+Quake writes its settings to `QUAKE/id1/config.cfg` on that disk (on
+leaving the Options menu and on quit) and reads them back at the start.
 
 The flash disk's 6 MB is too small for it, so there:
 

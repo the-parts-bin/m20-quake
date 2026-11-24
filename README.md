@@ -10,7 +10,12 @@ with sound (Quake's mixer at 11025 Hz, played at 48 kHz), USB keyboards
 and mice or the serial terminal's keys, and the span engine drawing the
 world's surfaces, lit per pixel in RGB565, and the models (monsters, items,
 the weapon: `r_m20alias`, below). `timedemo demo1` runs at about
-12 fps (demo2 12.8, demo3 12.0); at 320 × 240 it was about 18. It builds
+15 fps at 60 MHz, 3.7 with the CPU drawing (`r_m20span 0`); at 54 MHz it
+was 12 (demo2 12.8, demo3 12.0), and at 320 × 240 about 18. Without
+`QUAKE/m20args.txt` it starts with its demo loop (Esc for the menu); the
+settings go to `QUAKE/id1/config.cfg` on leaving the Options menu and on
+quit (the board is just switched off: stock Quake wrote it only on a
+clean shutdown). It builds
 with `make` (profile-guided, `build-pgo/`; `make PGO=0` without the
 profile, `make FPU=0` soft float), loads through the core's serial loader
 (`../core/tools/run.py build-pgo/quake.bin`) or from the SD card
@@ -41,7 +46,8 @@ shareware pak in the SPI flash (`tools/mkpak.py`, then
 for 640 × 360 at 115200 baud; the game stops meanwhile). `../core/tools/tdrun.py`
 runs a timedemo in one process that keeps reading the UART, with
 screenshots and profiles, and leaves the board reset and quiet. `make PROFILE=1` builds with the
-PC-sampling profiler (60 samples a second, at the vertical blank):
+PC-sampling profiler (`build-prof/`, with a smaller hunk, `MEMSIZE`
+0x480000: with the usual one the display buffers no longer fit) (60 samples a second, at the vertical blank):
 `m9bctl.py prof OUT.log` saves what it gathered since the last report, and
 `../core/tools/prof.py build-prof/quake.elf OUT.log` sums it by function.
 
@@ -80,6 +86,11 @@ model depths, still being written back when the frame base moved to the
 other display buffer, landed in `.bss` (traps in the client and sound code
 within minutes of play).
 
+The depth test (`SPAN_ZTEST`) is cleared only at power-up, never by a
+reset, so `ztest_on` can't assume it starts off: the first frame writes
+it off (the firmware also clears it before starting a program). Left on by
+Quake, it made Descent and System Shock, which don't use z, hang.
+
 ## Host test harness
 
 `make host` builds the same sources as a 32-bit x86 Linux program
@@ -108,7 +119,7 @@ after frame 1000. `M20_UART='F:text|...'` types on the UART from frame F
 window (keys go to the UART); the rest is at the top of `m20_host.c`. At
 the exit it prints `span_emu_stats` (the emulator's checks warn once on
 stderr). `make host HASH=1` (`SPAN=3`) is the frame hash timedemo
-(`build-host-hash/`): the same on every run, but not the board's after the
+(`build-host-hash/`, `build-host-hash-span3/`): the same on every run, but not the board's after the
 first frames (float contraction differs; `HOST_FMA=1` comes closer).
 
 ## Changes to quakegeneric
@@ -117,7 +128,16 @@ first frames (float contraction differs; `HOST_FMA=1` comes closer).
   buffers and a 256 KB surface cache take the rest) and the game's
   directory (`QUAKE`; FatFs has no `.`).
 - `sys_null.c`, `sys.h`: `Sys_FloatTime` from the core's clock counter,
-  `Sys_Error` halts.
+  `Sys_Error` halts, `Sys_Quit` writes `config.cfg` (`Host_Shutdown`
+  never runs), and `Sys_SendKeyEvents` delivers the keys (`IN_Commands`):
+  `SCR_ModalMessage` ("start a new game?") waited on it forever.
+- `menu.c`: `config.cfg` written on leaving the Options menu (the key
+  bindings' menu returns through it).
+- `draw.c`, `screen.c`: the menu twice as fast. With the menu up Quake
+  asks for a full update every frame, and the whole 640 × 360 screen was
+  tiled under the 3D view (40% of a frame), then faded a pixel at a time
+  with a table look-up each (52%): now only the border around the view is
+  tiled while a map is loaded, and the fade stores two pixels at once.
 - `common.c`: no "registered version" error for the cut-down pak (it
   counts as modified).
 - Doubles: the FPU is single precision, so doubles are software.
